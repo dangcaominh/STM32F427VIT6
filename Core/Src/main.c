@@ -22,7 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ili9341.h"
-#include "ov5640.h"
+#include "ov2640.h"
 //#include "camera.h"
 #include "XPT2046_touch.h"
 // #include "lvgl.h"
@@ -53,6 +53,8 @@
 DCMI_HandleTypeDef hdcmi;
 DMA_HandleTypeDef hdma_dcmi;
 
+I2C_HandleTypeDef hi2c1;
+
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim2;
@@ -75,6 +77,7 @@ static void MX_TIM2_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_DCMI_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -126,20 +129,28 @@ uint16_t pic[320][240];
 uint32_t DCMI_FrameIsReady;
 uint32_t Camera_FPS = 0;
 
+int _write(int file, char *data, int len)
+{
+    // Gửi dữ liệu qua UART
+    HAL_UART_Transmit(&huart1, (uint8_t *)data, len, HAL_MAX_DELAY);
+    return len;
+}
 
-// void HAL_DCMI_FrameEventCallback(DCMI_HandleTypeDef *hdcmi)
-// {
-// 	static uint32_t count = 0,tick = 0;
+
+void HAL_DCMI_FrameEventCallback(DCMI_HandleTypeDef *hdcmi)
+{
+	static uint32_t count = 0,tick = 0;
 	
-// 	if(HAL_GetTick() - tick >= 1000)
-// 	{
-// 		tick = HAL_GetTick();
-// 		Camera_FPS = count;
-// 		count = 0;
-// 	}
-// 	count++;
-//   DCMI_FrameIsReady = 1;
-// }
+	if(HAL_GetTick() - tick >= 1000)
+	{
+		tick = HAL_GetTick();
+		Camera_FPS = count;
+    printf("FPS = %d\n", Camera_FPS);
+    count = 0;
+	}
+	count++;
+  DCMI_FrameIsReady = 1;
+}
 /* USER CODE END 0 */
 
 /**
@@ -177,6 +188,7 @@ int main(void)
   MX_SPI1_Init();
   MX_USART1_UART_Init();
   MX_DCMI_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 	HAL_GPIO_WritePin(LCD_NRST_GPIO_Port, LCD_NRST_Pin, GPIO_PIN_RESET);
 	HAL_Delay(50);
@@ -191,19 +203,23 @@ int main(void)
   HAL_Delay(100);
   HAL_GPIO_WritePin(CAM_RST_GPIO_Port, CAM_RST_Pin, 1);
   //Camera_Init_Device(&hi2c1, FRAMESIZE_QVGA);
-  while(OV5640_Init())
-  {
-                                                                                                                                                                      HAL_Delay(300);
-  }      
-  OV5640_RGB565_Mode();		
-	//OV5640_Light_Mode(0);	   //set auto
-	OV5640_Color_Saturation(3); //default
-	//OV5640_Brightness(4);	//default
-	//OV5640_Contrast(3);     //default
-	//OV5640_Sharpness(33);	//set auto
-  OV5640_OutSize_Set(4,0, XSIZE , YSIZE);	
+  // while(OV5640_Init())
+  // {
+  //                                                                                                                                                                     HAL_Delay(300);
+  // }      
+  // OV5640_RGB565_Mode();		
+	// //OV5640_Light_Mode(0);	   //set auto
+	// OV5640_Color_Saturation(3); //default
+	// //OV5640_Brightness(4);	//default
+	// //OV5640_Contrast(3);     //default
+	// //OV5640_Sharpness(33);	//set auto
+  // OV5640_OutSize_Set(4,0, XSIZE , YSIZE);	
   //OV5640_WR_Reg(0x3035,0X51); // slow down OV5640 clocks ,adapt to the refresh rate of the LCD 
-  //OV5640_WR_Reg(0x3036,0X88); 
+  //OV5640_WR_Reg(0x3036,0X88);
+  ov2640_Init(0x60, CAMERA_R320x240);
+
+  
+  //ov2640_Config(0x60, CAMERA_COLOR_EFFECT, CAMERA_COLOR_EFFECT_ANTIQUE, CAMERA_BRIGHTNESS_LEVEL4);
   HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS, LCD_BASE1, 320 * 240 / 4);
 
   //HAL_GPIO_WritePin(OV5640_SIOC_GPIO_Port, OV5640_SIOC_Pin, )
@@ -254,7 +270,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 4;
-  RCC_OscInitStruct.PLL.PLLN = 120;
+  RCC_OscInitStruct.PLL.PLLN = 100;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 5;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
@@ -308,6 +324,54 @@ static void MX_DCMI_Init(void)
   /* USER CODE BEGIN DCMI_Init 2 */
 
   /* USER CODE END DCMI_Init 2 */
+
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
 
 }
 
@@ -530,9 +594,6 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, CAM_RST_Pin|LCD_NRST_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, OV5640_SIOC_Pin|OV5640_SIOD_Pin, GPIO_PIN_SET);
-
   /*Configure GPIO pin : LCD_INT_Pin */
   GPIO_InitStruct.Pin = LCD_INT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
@@ -601,13 +662,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : OV5640_SIOC_Pin OV5640_SIOD_Pin */
-  GPIO_InitStruct.Pin = OV5640_SIOC_Pin|OV5640_SIOD_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);

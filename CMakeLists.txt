@@ -50,6 +50,7 @@ file(GLOB_RECURSE LVGL_SOURCES "${CMAKE_SOURCE_DIR}/Core/Src/lvgl/*.c")
 file(GLOB_RECURSE UI_SOURCES "${CMAKE_SOURCE_DIR}/Core/Src/ui/*.c")
 file(GLOB_RECURSE CAM_SOURCES "${CMAKE_SOURCE_DIR}/Drivers/BSP/Camera/*.c")
 file(GLOB_RECURSE OV5640_SOURCES "${CMAKE_SOURCE_DIR}/Drivers/BSP/OV5640/*.c")
+file(GLOB_RECURSE OV2640_SOURCES "${CMAKE_SOURCE_DIR}/Drivers/BSP/OV2640/*.c")
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
@@ -57,7 +58,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/ili9341.c
     Core/Src/background.c
     Core/Src/XPT2046_touch.c
-    ${OV5640_SOURCES}
+    ${OV2640_SOURCES}
     # ${CAM_SOURCES}
     # ${LVGL_SOURCES}
     # ${UI_SOURCES}
@@ -67,7 +68,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
-    Drivers/BSP/OV5640
+    Drivers/BSP/OV2640
     # Core/Src/lvgl
     # Core/Src/ui
 )

@@ -72,10 +72,6 @@ void Error_Handler(void);
 #define CAM_RST_GPIO_Port GPIOD
 #define LCD_NRST_Pin GPIO_PIN_6
 #define LCD_NRST_GPIO_Port GPIOD
-#define OV5640_SIOC_Pin GPIO_PIN_8
-#define OV5640_SIOC_GPIO_Port GPIOB
-#define OV5640_SIOD_Pin GPIO_PIN_9
-#define OV5640_SIOD_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
