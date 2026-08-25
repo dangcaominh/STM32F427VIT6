@@ -1,7 +1,7 @@
 #include "main.h"
 #include "ov5640.h"
 
-void Camera_Init()
+void Camera_Init_OV5640()
 {
     HAL_GPIO_WritePin(CAM_RST_GPIO_Port, CAM_RST_Pin, 0);
     HAL_Delay(10);

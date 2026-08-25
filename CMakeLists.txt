@@ -61,6 +61,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CAMERA_SOURCES}
     ${LCD_SOURCES}
     ${OV5640_SOURCES}
+    ${OV2640_SOURCES}
 )
 
 
@@ -69,6 +70,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     Core/Inc/lcd
     Drivers/BSP/OV5640
+    Drivers/BSP/OV2640
     # Core/Src/lvgl
     # Core/Src/ui
 )

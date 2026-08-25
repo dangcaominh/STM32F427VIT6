@@ -3,54 +3,49 @@
 #include "ov5640.h"
 #include "ov5640cfg.h"
 #include "ov5640af.h"			 	
-#include "sccb.h"
+// Bỏ #include "sccb.h"
 
-
+/* Extern ngoại vi Hardware I2C1 */
+extern I2C_HandleTypeDef hi2c1;
 extern DMA_HandleTypeDef hdma_dcmi;
 extern DCMI_HandleTypeDef hdcmi;
-
 
 uint8_t   jpeg_mode = 0;
 uint32_t  jpeg_data_buf[jpeg_buf_size];
 
-
-
 const uint16_t jpeg_size_tbl[][2] =
 {
-		160, 120,	//QQVGA
+	160, 120,	//QQVGA
 	176, 144,	//QCIF
 	320, 240,	//QVGA
 	400, 240,	//WQVGA
 	352, 288,	//CIF
 };
 
+/**
+  * @brief  Ghi 1 byte vào thanh ghi OV5640 thông qua Hardware I2C1
+  * @param  reg: Địa chỉ thanh ghi (16-bit)
+  * @param  data: Dữ liệu ghi
+  * @retval 0: Thành công, 1: Thất bại
+  */
 uint8_t OV5640_WR_Reg(uint16_t reg, uint8_t data)
 {
-	uint8_t res = 0;
-	SCCB_Start();
-	if (SCCB_WR_Byte(OV5640_ADDR))res = 1;
-	if (SCCB_WR_Byte(reg >> 8))res = 1;
-	if (SCCB_WR_Byte(reg))res = 1;
-	if (SCCB_WR_Byte(data))res = 1;
-	SCCB_Stop();
-	return	res;
+	if (HAL_I2C_Mem_Write(&hi2c1, OV5640_ADDR, reg, I2C_MEMADD_SIZE_16BIT, &data, 1, 100) == HAL_OK)
+	{
+		return 0; // OK
+	}
+	return 1; // Lỗi truyền dữ liệu
 }
 
-
+/**
+  * @brief  Đọc 1 byte từ thanh ghi OV5640 thông qua Hardware I2C1
+  * @param  reg: Địa chỉ thanh ghi (16-bit)
+  * @retval Giá trị đọc được từ thanh ghi
+  */
 uint8_t OV5640_RD_Reg(uint16_t reg)
 {
 	uint8_t val = 0;
-	SCCB_Start();
-	SCCB_WR_Byte(OV5640_ADDR);
-	SCCB_WR_Byte(reg >> 8);
-	SCCB_WR_Byte(reg);
-	SCCB_Stop();
-
-	SCCB_Start();
-	SCCB_WR_Byte(OV5640_ADDR | 0X01);
-	val = SCCB_RD_Byte();
-	SCCB_No_Ack();
-	SCCB_Stop();
+	HAL_I2C_Mem_Read(&hi2c1, OV5640_ADDR, reg, I2C_MEMADD_SIZE_16BIT, &val, 1, 100);
 	return val;
 }
 
@@ -117,7 +112,6 @@ const static uint8_t OV5640_EXPOSURE_TBL[7][6] =
 	0x60,0x58,0xa0,0x60,0x58,0x20,//+3    
 };
 
-//exposure: 0 - 6,
 void OV5640_Exposure(uint8_t exposure)
 {
 	OV5640_WR_Reg(0x3212, 0x03);	//start group 3
@@ -140,12 +134,6 @@ const static uint8_t OV5640_LIGHTMODE_TBL[5][7] =
 	0x04,0X10,0X04,0X00,0X08,0X40,0X01,//Home
 };
 
-// light mode:
-//      0: auto
-//      1: sunny
-//      2: office
-//      3: cloudy
-//      4: home
 void OV5640_Light_Mode(uint8_t mode)
 {
 	uint8_t i;
@@ -166,9 +154,6 @@ const static uint8_t OV5640_SATURATION_TBL[7][6] =
 	0X2B,0xAB,0XD6,0XDA,0XD6,0X04,//+3
 };
 
-
-// Color Saturation: 
-//   sat:  0 - 6 
 void OV5640_Color_Saturation(uint8_t sat)
 {
 	uint8_t i;
@@ -183,8 +168,6 @@ void OV5640_Color_Saturation(uint8_t sat)
 	OV5640_WR_Reg(0x3212, 0xa3); //launch group 3	
 }
 
-//Brightness
-//     bright:  0 - 8
 void OV5640_Brightness(uint8_t bright)
 {
 	uint8_t brtval;
@@ -198,8 +181,6 @@ void OV5640_Brightness(uint8_t bright)
 	OV5640_WR_Reg(0x3212, 0xa3); //launch group 3
 }
 
-//Contrast:
-//     contrast:  0 - 6
 void OV5640_Contrast(uint8_t contrast)
 {
 	uint8_t reg0val = 0X00;
@@ -234,8 +215,6 @@ void OV5640_Contrast(uint8_t contrast)
 	OV5640_WR_Reg(0x3212, 0x13); //end group 3
 	OV5640_WR_Reg(0x3212, 0xa3); //launch group 3
 }
-// Sharpness:
-//    sharp: 0 - 33   (0: close , 33: auto , other: Sharpness)
 
 void OV5640_Sharpness(uint8_t sharp)
 {
@@ -256,18 +235,17 @@ void OV5640_Sharpness(uint8_t sharp)
 		OV5640_WR_Reg(0x530b, 0x04);
 		OV5640_WR_Reg(0x530c, 0x06);
 	}
-
 }
 
 const static uint8_t OV5640_EFFECTS_TBL[7][3] =
 {
-		0X06,0x40,0X10, // normal
-		0X1E,0xA0,0X40,
-		0X1E,0x80,0XC0,
-		0X1E,0x80,0X80,
-		0X1E,0x40,0XA0,
-		0X40,0x40,0X10,
-		0X1E,0x60,0X60,
+	0X06,0x40,0X10, // normal
+	0X1E,0xA0,0X40,
+	0X1E,0x80,0XC0,
+	0X1E,0x80,0X80,
+	0X1E,0x40,0XA0,
+	0X40,0x40,0X10,
+	0X1E,0x60,0X60,
 };
 
 void OV5640_Special_Effects(uint8_t eft)
@@ -281,9 +259,6 @@ void OV5640_Special_Effects(uint8_t eft)
 	OV5640_WR_Reg(0x3212, 0xa3); //launch group 3
 }
 
-// Flash Lamp
-//  sw:  0: off
-//       1:  on
 void OV5640_Flash_Lamp(uint8_t sw)
 {
 	OV5640_WR_Reg(0x3016, 0X02);
@@ -292,7 +267,6 @@ void OV5640_Flash_Lamp(uint8_t sw)
 	else OV5640_WR_Reg(0X3019, 0X00);
 }
 
-// set the output size
 uint8_t OV5640_OutSize_Set(uint16_t offx, uint16_t offy, uint16_t width, uint16_t height)
 {
 	OV5640_WR_Reg(0X3212, 0X03);
@@ -313,7 +287,6 @@ uint8_t OV5640_OutSize_Set(uint16_t offx, uint16_t offy, uint16_t width, uint16_
 
 	return 0;
 }
-
 
 uint8_t OV5640_Focus_Init(void)
 {
@@ -372,7 +345,6 @@ uint8_t OV5640_Auto_Focus(void)
 	return 0;
 }
 
-
 void jpeg_test(uint8_t jpg_size)
 {
 	HAL_DCMI_Stop(&hdcmi);
@@ -387,7 +359,6 @@ void jpeg_test(uint8_t jpg_size)
 	HAL_DMA_DeInit(&hdma_dcmi);
 
 	/* DCMI DMA Init */
-	/* DCMI Init */
 	hdma_dcmi.Instance = DMA2_Stream1;
 	hdma_dcmi.Init.Channel = DMA_CHANNEL_1;
 	hdma_dcmi.Init.Direction = DMA_PERIPH_TO_MEMORY;
@@ -430,15 +401,13 @@ void rgb565_test(void)
 	OV5640_RGB565_Mode();
 	OV5640_OutSize_Set(4, 0, XSIZE, YSIZE);
 
-
-	OV5640_WR_Reg(0x3035, 0X51); // slow down OV5640 clocks ,adapt to the refresh rate of the LCD 
+	OV5640_WR_Reg(0x3035, 0X51); // slow down OV5640 clocks
 	OV5640_WR_Reg(0x3036, 0X88);
 
 	/* DCMI DMA DeInit */
 	HAL_DMA_DeInit(&hdma_dcmi);
 
 	/* DCMI DMA Init */
-	/* DCMI Init */
 	hdma_dcmi.Instance = DMA2_Stream1;
 	hdma_dcmi.Init.Channel = DMA_CHANNEL_1;
 	hdma_dcmi.Init.Direction = DMA_PERIPH_TO_MEMORY;
@@ -474,20 +443,18 @@ void jpeg_dcmi_frame_callback(DMA_HandleTypeDef* _hdma)
 	uint32_t i = 0, jpgstart = 0, jpglen = 0;
 	uint8_t  head = 0;
 
-
-
 	HAL_DCMI_Stop(&hdcmi);
 
 	p = (uint8_t*)jpeg_data_buf;
 
-	for (i = 0;i < jpeg_buf_size * 4; i++) //search for 0XFF 0XD8 and 0XFF 0XD9, get size of JPG 
+	for (i = 0;i < jpeg_buf_size * 4; i++)
 	{
 		if ((p[i] == 0XFF) && (p[i + 1] == 0XD8))
 		{
 			jpgstart = i;
-			head = 1;	// Already found  FF D8
+			head = 1;
 		}
-		if ((p[i] == 0XFF) && (p[i + 1] == 0XD9) && head)  //search for FF D9
+		if ((p[i] == 0XFF) && (p[i + 1] == 0XD9) && head)
 		{
 			jpglen = i - jpgstart + 2;
 			break;
@@ -495,21 +462,15 @@ void jpeg_dcmi_frame_callback(DMA_HandleTypeDef* _hdma)
 	}
 	if (jpglen)
 	{
-		p += jpgstart;	// move to FF D8
-		for (i = 0;i < jpglen;i++)	// send JPG
+		p += jpgstart;
+		for (i = 0;i < jpglen;i++)
 		{
 			USART1->DR = p[i];
 			while ((USART1->SR & 0X40) == 0);
 		}
 
 		printf("jpg_size :  %d \r\n", jpglen);
-		//printf("jpgstart :  %d \r\n" , jpgstart);  
 	}
 
 	HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS, (uint32_t)jpeg_data_buf, jpeg_buf_size / 4);
 }
-
-
-
-
-
