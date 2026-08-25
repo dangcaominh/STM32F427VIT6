@@ -68,10 +68,16 @@ void Error_Handler(void);
 #define LED_GPIO_Port GPIOC
 #define BL_PWM_Pin GPIO_PIN_10
 #define BL_PWM_GPIO_Port GPIOB
+#define CARD_DETECT_Pin GPIO_PIN_15
+#define CARD_DETECT_GPIO_Port GPIOA
 #define CAM_RST_Pin GPIO_PIN_3
 #define CAM_RST_GPIO_Port GPIOD
 #define LCD_NRST_Pin GPIO_PIN_6
 #define LCD_NRST_GPIO_Port GPIOD
+#define OV5640_SIOC_Pin GPIO_PIN_8
+#define OV5640_SIOC_GPIO_Port GPIOB
+#define OV5640_SIOD_Pin GPIO_PIN_9
+#define OV5640_SIOD_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

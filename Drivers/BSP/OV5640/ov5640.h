@@ -5,6 +5,7 @@
 
 
  
+#define  OV5640_PWDN_Pin_RESET   HAL_GPIO_WritePin(OV5640_PWDN_GPIO_Port, OV5640_PWDN_Pin, GPIO_PIN_RESET)
 
 
 #define OV5640_ID               0X5640  
@@ -26,7 +27,7 @@
 #define   WQVGA_400_240    3
 #define   CIF_352_288      4
 
-#define   jpeg_buf_size     30*1024	
+#define   jpeg_buf_size     8*1024	
 
 
 

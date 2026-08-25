@@ -1,15 +1,16 @@
 #ifndef _OV5640CFG_H
 #define _OV5640CFG_H
 #include "ov5640.h" 
+#include "ov5640_reg.h"
 
 
 const uint16_t OV5640_jpeg_reg_tbl[][2]=
-{                 
+{
 	0x4300, 0x30, // YUV 422, YUYV
 	0x501f, 0x00, // YUV 422
 	// Input clock = 24Mhz
-	0x3035, 0x21, // PLL  
-	0x3036, 0x69, // PLL 
+	0x3035, 0x18, // PLL  
+	0x3036, 0x70, // PLL 
 	0x3c07, 0x07, // lightmeter 1 threshold[7:0] 
 	0x3820, 0x46, // flip
 	0x3821, 0x20, // mirror									 
@@ -64,7 +65,7 @@ const uint16_t ov5640_rgb565_reg_tbl[][2]=
 	0X501F, 0x01,
 	// 1280x800, 15fps
 	// input clock 24Mhz, PCLK 42Mhz
-	0x3035, 0x41, // PLL
+	0x3035, 0x21, // PLL
 	0x3036, 0x69, // PLL
 	0x3c07, 0x07, // lightmeter 1 threshold[7:0]
 	0x3820, 0x46, // flip
@@ -108,11 +109,10 @@ const uint16_t ov5640_rgb565_reg_tbl[][2]=
 	0x3824, 0x04, // PCLK manual divider
 	0x5001, 0xA3, // SDE on, scale on, UV average off, color matrix on, AWB on
 	0x3503, 0x00, // AEC/AGC on      
-}; 
- 
- 
-const uint16_t ov5640_init_reg_tbl[][2]= 
-{   
+};
+
+const uint16_t ov5640_init_reg_tbl[][2]=
+{
 	// 24MHz input clock, 24MHz PCLK
 	0x3008, 0x42, // software power down, bit[6]
 	0x3103, 0x03, // system clock from PLL, bit[1]
@@ -151,7 +151,7 @@ const uint16_t ov5640_init_reg_tbl[][2]=
 	0x3636, 0x03,
 	0x3634, 0x40,
 	0x3622, 0x01,
-	// 50/60Hz detection 50/60Hz 
+	// 50/60Hz detection 50/60Hz
 	0x3c01, 0x34, // Band auto, bit[7]
 	0x3c04, 0x28, // threshold low sum
 	0x3c05, 0x98, // threshold high sum
@@ -175,14 +175,14 @@ const uint16_t ov5640_init_reg_tbl[][2]=
 	0x501f, 0x00, // YUV 422
 	0x440e, 0x00,
 	0x5000, 0xa7, // Lenc on, raw gamma on, BPC on, WPC on, CIP on
-	// AEC target 
+	// AEC target
 	0x3a0f, 0x30, // stable range in high
 	0x3a10, 0x28, // stable range in low
 	0x3a1b, 0x30, // stable range out high
 	0x3a1e, 0x26, // stable range out low
 	0x3a11, 0x60, // fast zone high
 	0x3a1f, 0x14, // fast zone low
-	// Lens correction for ? 
+	// Lens correction for ?
 	0x5800, 0x23,
 	0x5801, 0x14,
 	0x5802, 0x0f,
@@ -246,7 +246,7 @@ const uint16_t ov5640_init_reg_tbl[][2]=
 	0x583b, 0x28,
 	0x583c, 0x42,
 	0x583d, 0xce, // lenc BR offset
-	// AWB 
+	// AWB
 	0x5180, 0xff, // AWB B block
 	0x5181, 0xf2, // AWB control
 	0x5182, 0x00, // [7:4] max local counter, [3:0] max fast counter
@@ -278,7 +278,7 @@ const uint16_t ov5640_init_reg_tbl[][2]=
 	0x519c, 0x06,
 	0x519d, 0x82,
 	0x519e, 0x38, // AWB control
-	// Gamma 
+	// Gamma
 	0x5480, 0x01, // Gamma bias plus on, bit[0]
 	0x5481, 0x08,
 	0x5482, 0x14,
@@ -296,7 +296,7 @@ const uint16_t ov5640_init_reg_tbl[][2]=
 	0x548e, 0xdd,
 	0x548f, 0xea,
 	0x5490, 0x1d,
-	// color matrix 	
+	// color matrix
 	0x5381, 0x1e, // CMX1 for Y
 	0x5382, 0x5b, // CMX2 for Y
 	0x5383, 0x08, // CMX3 for Y
@@ -308,15 +308,15 @@ const uint16_t ov5640_init_reg_tbl[][2]=
 	0x5389, 0x10, // CMX9 for V
 	0x538a, 0x01, // sign[9]
 	0x538b, 0x98, // sign[8:1]
-	// UV adjust UV 
+	// UV adjust UV
 	0x5580, 0x06, // saturation on, bit[1]
 	0x5583, 0x40,
-	0x5584, 0x10, 
+	0x5584, 0x10,
 	0x5589, 0x10,
 	0x558a, 0x00,
 	0x558b, 0xf8,
 	0x501d, 0x40, // enable manual offset of contrast
-	// CIP 
+	// CIP
 	0x5300, 0x08, // CIP sharpen MT threshold 1
 	0x5301, 0x30, // CIP sharpen MT threshold 2
 	0x5302, 0x10, // CIP sharpen MT offset 1
@@ -329,11 +329,12 @@ const uint16_t ov5640_init_reg_tbl[][2]=
 	0x530a, 0x30, // CIP sharpen TH threshold 2
 	0x530b, 0x04, // CIP sharpen TH offset 1
 	0x530c, 0x06, // CIP sharpen TH offset 2
-	0x5025, 0x00, 
+	0x5025, 0x00,
 	0x3008, 0x02, // wake up from standby, bit[6]
-	
+
 	0x4740, 0X21, //VSYNC active HIGH
-};  
+
+};
 
 #endif
 

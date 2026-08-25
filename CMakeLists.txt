@@ -35,7 +35,8 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 enable_language(C ASM)
 
 # Create an executable object type
-add_executable(${CMAKE_PROJECT_NAME})
+add_executable(${CMAKE_PROJECT_NAME}
+    Core/Src/sd.c)
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
@@ -46,29 +47,28 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 )
 
 
-file(GLOB_RECURSE LVGL_SOURCES "${CMAKE_SOURCE_DIR}/Core/Src/lvgl/*.c")
-file(GLOB_RECURSE UI_SOURCES "${CMAKE_SOURCE_DIR}/Core/Src/ui/*.c")
-file(GLOB_RECURSE CAM_SOURCES "${CMAKE_SOURCE_DIR}/Drivers/BSP/Camera/*.c")
 file(GLOB_RECURSE OV5640_SOURCES "${CMAKE_SOURCE_DIR}/Drivers/BSP/OV5640/*.c")
 file(GLOB_RECURSE OV2640_SOURCES "${CMAKE_SOURCE_DIR}/Drivers/BSP/OV2640/*.c")
+file(GLOB CAMERA_SOURCES CONFIGURE_DEPENDS "Core/Src/camera/*.c")
+file(GLOB LCD_SOURCES CONFIGURE_DEPENDS "Core/Src/lcd/*.c")
+file(GLOB TCP_SERVER_SOURCES CONFIGURE_DEPENDS "Core/Src/tcp_server/*.c")
+
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
-    Core/Src/ili9341.c
-    Core/Src/background.c
-    Core/Src/XPT2046_touch.c
-    ${OV2640_SOURCES}
-    # ${CAM_SOURCES}
-    # ${LVGL_SOURCES}
-    # ${UI_SOURCES}
+    ${TCP_SERVER_SOURCES}
+    ${CAMERA_SOURCES}
+    ${LCD_SOURCES}
+    ${OV5640_SOURCES}
 )
 
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
-    Drivers/BSP/OV2640
+    Core/Inc/lcd
+    Drivers/BSP/OV5640
     # Core/Src/lvgl
     # Core/Src/ui
 )
@@ -76,12 +76,11 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
-    LV_LVGL_H_INCLUDE_SIMPLE
 )
 
 # Add linked libraries
 target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
-
     # Add user defined libraries
 )
+

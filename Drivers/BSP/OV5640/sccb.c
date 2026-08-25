@@ -5,15 +5,16 @@
 // Use for STM32F746IGT , HCLK = 200MHz
 void delay_6us(void)
 {
-        uint16_t  i;
-        
-        for(i=0;i < 250;i++);
+    // 'volatile' ép Compiler giữ lại vòng lặp ở Release Mode
+    for (volatile uint32_t i = 0; i < 250; i++)
+    {
+        __NOP();
+    }
 }
-
 
 void SCCB_Delay(void)
 {
-	delay_6us();
+    delay_6us();
 }
 
 void SCCB_Start(void)
