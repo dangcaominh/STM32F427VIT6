@@ -26,6 +26,7 @@
 #include <string.h>
 #include "ili9341.h"
 #include "ov2640.h"
+#include "ov5640.h"
 #include "XPT2046_touch.h"
 #include "tcp_server/tcp.h"
 /* USER CODE END Includes */
@@ -97,54 +98,27 @@ uint32_t last_fps_tick = 0;
 
 volatile uint32_t t_start_capture = 0;
 volatile uint32_t t_capture_done = 0;
-uint32_t t_tcp_done = 0;
 
-uint32_t dur_capture_ms = 0; // Thời gian chụp (DCMI -> RAM)
-uint32_t dur_tcp_ms = 0;     // Thời gian gửi (RAM -> PC qua TCP)
-
-void Quick_DCMI_DMA_Reset(DCMI_HandleTypeDef *hdcmi)
+void Quick_DCMI_DMA_Reset(DCMI_HandleTypeDef* hdcmi)
 {
-    DMA_Stream_TypeDef *dma = (DMA_Stream_TypeDef *)hdcmi->DMA_Handle->Instance;
+	DMA_Stream_TypeDef* dma = (DMA_Stream_TypeDef*)hdcmi->DMA_Handle->Instance;
 
-    // 1. Tắt DMA Stream trực tiếp trên thanh ghi
-    dma->CR &= ~DMA_SxCR_EN;
+	// 1. Tắt DMA Stream trực tiếp trên thanh ghi
+	dma->CR &= ~DMA_SxCR_EN;
 
-    // 2. Chờ phần cứng xác nhận tắt hẳn (chỉ mất khoảng 3-5 chu kỳ clock)
-    while (dma->CR & DMA_SxCR_EN);
+	// 2. Chờ phần cứng xác nhận tắt hẳn (chỉ mất khoảng 3-5 chu kỳ clock)
+	while (dma->CR & DMA_SxCR_EN);
 
-    // 3. Reset trạng thái trong struct HAL để không bị trả về HAL_BUSY
-    hdcmi->DMA_Handle->State = HAL_DMA_STATE_READY;
-    hdcmi->State = HAL_DCMI_STATE_READY;
+	// 3. Reset trạng thái trong struct HAL để không bị trả về HAL_BUSY
+	hdcmi->DMA_Handle->State = HAL_DMA_STATE_READY;
+	hdcmi->State = HAL_DCMI_STATE_READY;
 }
 
 void HAL_DCMI_FrameEventCallback(DCMI_HandleTypeDef* hdcmi)
 {
-	t_capture_done = HAL_GetTick(); // 1. Đánh dấu mốc chụp xong frame
-	uint32_t remain = __HAL_DMA_GET_COUNTER(hdcmi->DMA_Handle);
-	uint32_t total_transfers = BUF_SIZE / 4;
-	uint32_t transferred = total_transfers - remain;
-	uint32_t bytes = transferred * 4;
-	jpeg_end = -1;
-
-	for (int32_t i = bytes - 1; i > 0; i--)
-	{
-		if (cameraData[i - 1] == 0xFF &&
-			cameraData[i] == 0xD9)
-		{
-			jpeg_end = i;
-			break;
-		}
-	}
-
-	if (jpeg_end > 0)
-	{
-		//printf("JPEG size = %ld\r\n", jpeg_end);
-	}
-	else
-	{
-		printf("JPEG EOI not found\r\n");
-	}
-	Quick_DCMI_DMA_Reset(hdcmi);
+	t_capture_done = HAL_GetTick(); // Đánh dấu thời điểm xong frame ngay lập tức
+	printf("Time la: %d ms\r\n", (int)t_capture_done - (int)t_start_capture);
+	t_start_capture = t_capture_done;
 	frame_ready = 1;
 }
 
@@ -214,62 +188,19 @@ int main(void)
   MX_LWIP_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-	if (init_tcp_client() != 0)
-	{
-		Error_Handler();
-	}
-
-	while (!isConnected)
-	{
-		MX_LWIP_Process();
-	}
 	LCD_Init();
 	Camera_Init_OV5640();
 
 	/* Start the Camera capture */
 	__HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
-	t_start_capture = HAL_GetTick(); // Đánh dấu mốc bắt đầu Capture frame 1
-	HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)(&cameraData[0]), BUF_SIZE / 4);
+	t_start_capture = HAL_GetTick();
+	HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS, LCD_BASE1, BUF_SIZE / 4);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1)
 	{
-		uint32_t now = HAL_GetTick();
-		// In thông số mỗi giây (tránh in liên tục gây nghẽn UART)
-		if (now - last_fps_tick >= 1000)
-		{
-			current_fps = (float)frame_counter * 1000.0f / (now - last_fps_tick);
-			frame_counter = 0;
-			last_fps_tick = now;
-
-			printf("[STAT] FPS: %d | Cap: %lu ms | TCP: %lu ms | Total: %lu ms\r\n",
-				(int)current_fps, dur_capture_ms, dur_tcp_ms, dur_capture_ms + dur_tcp_ms);
-		}
-		MX_LWIP_Process();
-		if (frame_ready)
-		{
-			if (tcp_sent_count >= jpeg_end + 1)
-			{
-				t_tcp_done = HAL_GetTick();
-				dur_capture_ms = t_capture_done - t_start_capture;
-                dur_tcp_ms = t_tcp_done - t_capture_done;
-				frame_counter++;
-
-				frame_ready = 0;
-				tcp_sent_count = 0;
-				hdcmi.Instance->ICR = 0x1F;
-				t_start_capture = HAL_GetTick(); // Đánh dấu mốc bắt đầu Capture frame tiếp theo
-				HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)(&cameraData[0]), BUF_SIZE / 4);
-				__HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
-			}
-			else
-			{
-				int sent = tcp_send_chunk((uint8_t*)&cameraData[tcp_sent_count], jpeg_end + 1 - tcp_sent_count);
-				tcp_sent_count += sent;
-			}
-		}
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -793,7 +724,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-		/* User can add his own implementation to report the HAL error return state */
+			/* User can add his own implementation to report the HAL error return state */
 	__disable_irq();
 	while (1)
 	{
@@ -812,8 +743,8 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-		/* User can add his own implementation to report the file name and line number,
-		 ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+			/* User can add his own implementation to report the file name and line number,
+			 ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

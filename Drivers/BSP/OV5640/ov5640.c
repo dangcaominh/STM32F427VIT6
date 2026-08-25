@@ -3,7 +3,6 @@
 #include "ov5640.h"
 #include "ov5640cfg.h"
 #include "ov5640af.h"			 	
-// Bỏ #include "sccb.h"
 
 /* Extern ngoại vi Hardware I2C1 */
 extern I2C_HandleTypeDef hi2c1;
