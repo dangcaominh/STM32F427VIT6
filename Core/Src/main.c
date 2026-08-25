@@ -23,6 +23,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <string.h>
 #include "ili9341.h"
 #include "ov5640.h"
 #include "XPT2046_touch.h"
@@ -93,41 +94,45 @@ void HAL_DCMI_FrameEventCallback(DCMI_HandleTypeDef* hdcmi)
 	uint32_t total_transfers = BUF_SIZE / 4;
 	uint32_t transferred = total_transfers - remain;
 	uint32_t bytes = transferred * 4;
-	printf("First = 0x%02X 0x%02X\r\n",
+	printf("First = 0x%02X 0x%02X 0x%02X 0x%02X\r\n",
 		cameraData[0],
-		cameraData[1]);
-	int32_t jpeg_end = -1;
-
-	for (int32_t i = bytes - 1; i > 0; i--)
-	{
-		if (cameraData[i - 1] == 0xFF &&
-			cameraData[i] == 0xD9)
+		cameraData[1],
+		cameraData[2],
+		cameraData[3]
+	);
+	printf("Middle = %02X %02X %02X %02X\r\n",
+		cameraData[8000],
+		cameraData[8001],
+		cameraData[8002],
+		cameraData[8003]);
+		int32_t jpeg_end = -1;
+		
+		for (int32_t i = bytes - 1; i > 0; i--)
 		{
-			jpeg_end = i + 1;   // kích thước JPEG
-			break;
-		}
-	}
-
-	if (jpeg_end > 0)
-	{
-		printf("Pointer = %ld\r\n", bytes);
-		printf("JPEG size = %ld\r\n", jpeg_end);
-		printf("Last = 0x%02X 0x%02X\r\n",
-			cameraData[jpeg_end - 2],
-			cameraData[jpeg_end - 1]);
-	}
-	else
-	{
-		printf("JPEG EOI not found\r\n");
-	}
-
-
+			if (cameraData[i - 1] == 0xFF &&
+				cameraData[i] == 0xD9)
+				{
+					jpeg_end = i + 1;   // kích thước JPEG
+					break;
+				}
+			}
+			
+			if (jpeg_end > 0)
+			{
+				printf("Pointer = %ld\r\n", bytes);
+				printf("JPEG size = %ld\r\n", jpeg_end);
+				printf("Last = 0x%02X 0x%02X\r\n",
+					cameraData[jpeg_end - 2],
+					cameraData[jpeg_end - 1]);
+				}
+				else
+				{
+					printf("JPEG EOI not found\r\n");
+				}
+	HAL_DMA_Abort(hdcmi->DMA_Handle);
 	if (x == 0)
 	{
 		x = 1;
-		__HAL_DCMI_ENABLE_IT(hdcmi, DCMI_IT_FRAME);
-		HAL_DCMI_Start_DMA(hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)(&cameraData[0]), BUF_SIZE / 4);
-
 	}
 }
 
@@ -205,10 +210,10 @@ int main(void)
 	}
 	LCD_Init();
 	Camera_Init();
-	HAL_DCMI_Stop(&hdcmi);
-	__HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
-
+	//HAL_DCMI_Stop(&hdcmi);
+	
 	/* Start the Camera capture */
+	__HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
 	HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)(&cameraData[0]), BUF_SIZE / 4);
 	uint32_t tcp_sent = 0;
 	/* USER CODE END 2 */
@@ -218,7 +223,15 @@ int main(void)
 	while (1)
 	{
 		MX_LWIP_Process();
-		/* USER CODE END WHILE */
+		if (x == 1)
+		{
+			memset(cameraData, 0, sizeof(cameraData));
+			hdcmi.Instance->ICR = 0x1F;
+			__HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
+			HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)(&cameraData[0]), BUF_SIZE / 4);
+			x = 2;
+		}
+			/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
 	}
