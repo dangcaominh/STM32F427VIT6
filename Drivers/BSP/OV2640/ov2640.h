@@ -40,6 +40,7 @@ uint8_t OV2640_WR_Reg(uint8_t reg, uint8_t value);
 uint8_t OV2640_RD_Reg(uint8_t reg);
 
 uint8_t OV2640_Init(void);
+uint8_t OV2640_Init_RGB565(ov2640_resolution_t res);
 uint8_t OV2640_Init_JPEG(ov2640_resolution_t res);
 uint16_t OV2640_ReadID(void);
 

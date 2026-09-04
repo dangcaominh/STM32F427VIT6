@@ -87,56 +87,45 @@ static void MX_I2C1_Init(void);
 /* USER CODE BEGIN 0 */
 
 extern bool isConnected;
-#define BUF_SIZE	24 * 1024
-uint8_t cameraData[BUF_SIZE] __attribute__((aligned(4)));
+#define BUF_SIZE	75 * 1024
 
-int frame_ready = 0;
-int32_t jpeg_end = -1;
+// Biến cho tính toán thời gian và FPS
+volatile uint8_t frame_ready = 0;
+volatile uint32_t capture_time_ms = 0;
+volatile uint32_t last_frame_tick = 0;
 volatile uint32_t frame_counter = 0;
+
 float current_fps = 0.0f;
-uint32_t last_fps_tick = 0;
+uint32_t last_fps_print_tick = 0;
 
-volatile uint32_t t_start_capture = 0;
-volatile uint32_t t_capture_done = 0;
-
-void Quick_DCMI_DMA_Reset(DCMI_HandleTypeDef* hdcmi)
-{
-	DMA_Stream_TypeDef* dma = (DMA_Stream_TypeDef*)hdcmi->DMA_Handle->Instance;
-
-	// 1. Tắt DMA Stream trực tiếp trên thanh ghi
-	dma->CR &= ~DMA_SxCR_EN;
-
-	// 2. Chờ phần cứng xác nhận tắt hẳn (chỉ mất khoảng 3-5 chu kỳ clock)
-	while (dma->CR & DMA_SxCR_EN);
-
-	// 3. Reset trạng thái trong struct HAL để không bị trả về HAL_BUSY
-	hdcmi->DMA_Handle->State = HAL_DMA_STATE_READY;
-	hdcmi->State = HAL_DCMI_STATE_READY;
-}
 
 void HAL_DCMI_FrameEventCallback(DCMI_HandleTypeDef* hdcmi)
 {
-	t_capture_done = HAL_GetTick(); // Đánh dấu thời điểm xong frame ngay lập tức
-	printf("Time la: %d ms\r\n", (int)t_capture_done - (int)t_start_capture);
-	t_start_capture = t_capture_done;
-	frame_ready = 1;
+  uint32_t now = HAL_GetTick();
+
+  // Thời gian chụp/xử lý giữa 2 khung hình liên tiếp
+  capture_time_ms = now - last_frame_tick;
+  last_frame_tick = now;
+
+  frame_counter++;
+  frame_ready = 1;
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-	if (GPIO_Pin == LCD_INT_Pin)
-	{
-		if (XPT2046_TouchPressed())
-		{
-		}
-	}
+  if (GPIO_Pin == LCD_INT_Pin)
+  {
+    if (XPT2046_TouchPressed())
+    {
+    }
+  }
 }
 
 int _write(int file, char* data, int len)
 {
-	// Gửi dữ liệu qua UART
-	HAL_UART_Transmit(&huart1, (uint8_t*)data, len, HAL_MAX_DELAY);
-	return len;
+  // Gửi dữ liệu qua UART
+  HAL_UART_Transmit(&huart1, (uint8_t*)data, len, HAL_MAX_DELAY);
+  return len;
 }
 
 
@@ -188,23 +177,46 @@ int main(void)
   MX_LWIP_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-	LCD_Init();
-	Camera_Init_OV5640();
-
-	/* Start the Camera capture */
-	__HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
-	t_start_capture = HAL_GetTick();
-	HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS, LCD_BASE1, BUF_SIZE / 4);
+  LCD_Init();
+  Camera_Init_OV2640();
+  uint32_t start_tick = HAL_GetTick();
+  last_frame_tick = start_tick;
+  last_fps_print_tick = start_tick;
+  /* Start the Camera capture */
+  __HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
+  HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS, LCD_BASE1, BUF_SIZE / 4);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-	while (1)
-	{
+  while (1)
+  {
+    if (frame_ready)
+    {
+      frame_ready = 0;
+      // Thực hiện xử lý frame dữ liệu tại đây nếu cần
+    }
+
+    // Tính toán và in ra Terminal mỗi 1000ms (1 giây)
+    uint32_t now = HAL_GetTick();
+    if (now - last_fps_print_tick >= 1000)
+    {
+      uint32_t elapsed_ms = now - last_fps_print_tick;
+
+      // Tính FPS trung bình trong 1 giây qua
+      current_fps = ((float)frame_counter * 1000.0f) / (float)elapsed_ms;
+
+      // In ra UART
+      printf("Capture Time: %lu ms | FPS: %d\r\n", capture_time_ms, (int)current_fps);
+
+      // Reset bộ đếm cho chu kỳ 1 giây tiếp theo
+      frame_counter = 0;
+      last_fps_print_tick = now;
+    }
+  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	}
   /* USER CODE END 3 */
 }
 
@@ -283,7 +295,7 @@ static void MX_DCMI_Init(void)
   hdcmi.Init.HSPolarity = DCMI_HSPOLARITY_LOW;
   hdcmi.Init.CaptureRate = DCMI_CR_ALL_FRAME;
   hdcmi.Init.ExtendedDataMode = DCMI_EXTEND_DATA_8B;
-  hdcmi.Init.JPEGMode = DCMI_JPEG_ENABLE;
+  hdcmi.Init.JPEGMode = DCMI_JPEG_DISABLE;
   if (HAL_DCMI_Init(&hdcmi) != HAL_OK)
   {
     Error_Handler();
@@ -724,11 +736,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-			/* User can add his own implementation to report the HAL error return state */
-	__disable_irq();
-	while (1)
-	{
-	}
+      /* User can add his own implementation to report the HAL error return state */
+  __disable_irq();
+  while (1)
+  {
+  }
   /* USER CODE END Error_Handler_Debug */
 }
 
@@ -743,8 +755,8 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-			/* User can add his own implementation to report the file name and line number,
-			 ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+      /* User can add his own implementation to report the file name and line number,
+       ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
