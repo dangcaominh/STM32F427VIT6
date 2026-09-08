@@ -30,7 +30,7 @@ err_t init_tcp_client()
     ip_addr_t serverip;
     uint16_t server_port = 8080;
 
-    IP4_ADDR(&serverip, 192, 168, 1, 51);
+    IP4_ADDR(&serverip, 192, 168, 1, 12);
 
     tcp = tcp_new();
 

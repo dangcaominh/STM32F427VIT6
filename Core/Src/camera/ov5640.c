@@ -16,5 +16,5 @@ void Camera_Init_OV5640()
     OV5640_Contrast(3);			// default
     OV5640_Sharpness(33);		// set auto
     OV5640_JPEG_Mode();
-    OV5640_OutSize_Set(0, 4, 320, 240); // set output size
+    OV5640_OutSize_Set(0, 0, 320, 240); // set output size
 }
