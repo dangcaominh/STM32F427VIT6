@@ -267,7 +267,7 @@ int main(void)
       __HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
     }
 
-    // 3. Xử lý truyền TCP
+    // 3. Xử lý truyền TCP.
     if (frame_ready)
     {
       if (tcp_sent_count >= jpeg_end + 1)
