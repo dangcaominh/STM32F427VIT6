@@ -12,7 +12,8 @@ void Camera_Init_OV5640()
     }
     OV5640_Light_Mode(0);		// set auto
     OV5640_Color_Saturation(3); // default
-    OV5640_Brightness(4);		// default
+    OV5640_Exposure(4);		// +1 exposure compensation
+    OV5640_Brightness(5);		// +1 brightness compensation
     OV5640_Contrast(3);			// default
     OV5640_Sharpness(33);		// set auto
     OV5640_RGB565_Mode();

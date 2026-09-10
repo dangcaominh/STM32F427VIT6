@@ -50,8 +50,6 @@ DMA_HandleTypeDef hdma_dcmi;
 
 I2C_HandleTypeDef hi2c1;
 
-SD_HandleTypeDef hsd;
-
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim2;
@@ -63,7 +61,6 @@ SRAM_HandleTypeDef hsram1;
 
 /* USER CODE BEGIN PV */
 
-// Khai báo biến cho Netconn
 
 /* USER CODE END PV */
 
@@ -75,7 +72,6 @@ static void MX_FMC_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_DCMI_Init(void);
-static void MX_SDIO_SD_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
@@ -86,7 +82,7 @@ static void MX_I2C1_Init(void);
 
 extern bool isConnected;
 #define BUF_SIZE	75 * 1024
-uint8_t cameraData[BUF_SIZE] __attribute__((aligned(4)));
+//uint8_t cameraData[BUF_SIZE] __attribute__((aligned(4)));
 
 int frame_ready = 0;
 volatile uint32_t frame_counter = 0;
@@ -95,16 +91,25 @@ uint32_t last_fps_tick = 0;
 
 volatile uint32_t t_start_capture = 0;
 volatile uint32_t t_capture_done = 0;
-uint32_t t_tcp_done = 0;
-
-uint32_t dur_capture_ms = 0; // Thời gian chụp (DCMI -> RAM)
-uint32_t dur_tcp_ms = 0;     // Thời gian gửi (RAM -> PC qua TCP)
-
+uint16_t* p = (uint16_t*)LCD_BASE1;
+long long timeCount = 0;
 
 void HAL_DCMI_FrameEventCallback(DCMI_HandleTypeDef* hdcmi)
 {
-	t_capture_done = HAL_GetTick(); // 1. Đánh dấu mốc chụp xong frame
-	frame_ready = 1;
+// 	HAL_DCMI_Stop(hdcmi);
+// 	t_capture_done = HAL_GetTick(); // 1. Đánh dấu mốc chụp xong frame
+// 	frame_ready = 1;
+// 	frame_counter++;
+// 	timeCount++;
+// 	if (timeCount != 1) {
+// 		for (int i = 0; i < BUF_SIZE; i += 2)
+// 		{
+// 			*p = (uint16_t)cameraData[i] + ((uint16_t)cameraData[i + 1] << 8);
+// 		}
+// 	}
+// 	__HAL_DCMI_ENABLE_IT(hdcmi, DCMI_IT_FRAME);
+// 	t_start_capture = HAL_GetTick();
+// 	HAL_DCMI_Start_DMA(hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)(cameraData), BUF_SIZE / 4);
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
@@ -129,7 +134,6 @@ int _write(int file, char* data, int len)
 void Camera_Init_OV5640();
 void Camera_Init_OV2640();
 void LCD_Init();
-int32_t tcp_sent_count = 0;
 
 /* USER CODE END 0 */
 
@@ -167,27 +171,21 @@ int main(void)
 	MX_TIM2_Init();
 	MX_SPI1_Init();
 	MX_DCMI_Init();
-	//MX_SDIO_SD_Init();
 	MX_USART1_UART_Init();
 	MX_LWIP_Init();
 	MX_I2C1_Init();
 	/* USER CODE BEGIN 2 */
-	if (init_tcp_client() != 0)
-	{
-		Error_Handler();
-	}
-
-	while (!isConnected)
-	{
-		MX_LWIP_Process();
-	}
+	  // if (init_tcp_client() != 0)
+	  // {
+	  // 	Error_Handler();
+	  // }
 	LCD_Init();
 	Camera_Init_OV5640();
 
 	/* Start the Camera capture */
 	__HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
 	t_start_capture = HAL_GetTick(); // Đánh dấu mốc bắt đầu Capture frame 1
-	HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)(&cameraData[0]), BUF_SIZE / 4);
+	HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS, LCD_BASE1, BUF_SIZE / 4);
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -195,37 +193,17 @@ int main(void)
 	while (1)
 	{
 		uint32_t now = HAL_GetTick();
-		// In thông số mỗi giây (tránh in liên tục gây nghẽn UART)
 		if (now - last_fps_tick >= 1000)
 		{
 			current_fps = (float)frame_counter * 1000.0f / (now - last_fps_tick);
 			frame_counter = 0;
 			last_fps_tick = now;
+			printf("Camera FPS: %d\r\n", (int)current_fps);
 
-			printf("[STAT] FPS: %d | Cap: %lu ms | TCP: %lu ms | Total: %lu ms\r\n",
-				(int)current_fps, dur_capture_ms, dur_tcp_ms, dur_capture_ms + dur_tcp_ms);
 		}
 		MX_LWIP_Process();
 		if (frame_ready)
 		{
-			if (tcp_sent_count >= BUF_SIZE / 2)
-			{
-				t_tcp_done = HAL_GetTick();
-				dur_capture_ms = t_capture_done - t_start_capture;
-				dur_tcp_ms = t_tcp_done - t_capture_done;
-				frame_counter++;
-				hdcmi.Instance->ICR = 0x1F;
-				__HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
-				t_start_capture = HAL_GetTick();
-				HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)(&cameraData[0]), BUF_SIZE / 4);
-				frame_ready = 0;
-				tcp_sent_count = 0;
-			}
-			else
-			{
-				int sent = tcp_send_chunk((uint8_t*)&cameraData[0], BUF_SIZE);
-				tcp_sent_count += sent;
-			}
 		}
 		/* USER CODE END WHILE */
 
@@ -365,42 +343,6 @@ static void MX_I2C1_Init(void)
 	/* USER CODE BEGIN I2C1_Init 2 */
 
 	/* USER CODE END I2C1_Init 2 */
-
-}
-
-/**
-  * @brief SDIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_SDIO_SD_Init(void)
-{
-
-	/* USER CODE BEGIN SDIO_Init 0 */
-
-	/* USER CODE END SDIO_Init 0 */
-
-	/* USER CODE BEGIN SDIO_Init 1 */
-
-	/* USER CODE END SDIO_Init 1 */
-	hsd.Instance = SDIO;
-	hsd.Init.ClockEdge = SDIO_CLOCK_EDGE_RISING;
-	hsd.Init.ClockBypass = SDIO_CLOCK_BYPASS_DISABLE;
-	hsd.Init.ClockPowerSave = SDIO_CLOCK_POWER_SAVE_DISABLE;
-	hsd.Init.BusWide = SDIO_BUS_WIDE_4B;
-	hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_DISABLE;
-	hsd.Init.ClockDiv = 4;
-	if (HAL_SD_Init(&hsd) != HAL_OK)
-	{
-		Error_Handler();
-	}
-	if (HAL_SD_ConfigWideBusOperation(&hsd, SDIO_BUS_WIDE_4B) != HAL_OK)
-	{
-		Error_Handler();
-	}
-	/* USER CODE BEGIN SDIO_Init 2 */
-
-	/* USER CODE END SDIO_Init 2 */
 
 }
 
@@ -667,8 +609,10 @@ static void MX_GPIO_Init(void)
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
 
-	/*Configure GPIO pins : PC0 PC2 PC3 */
-	GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_2 | GPIO_PIN_3;
+	/*Configure GPIO pins : PC0 PC2 PC3 PC8
+							 PC9 PC10 PC11 PC12 */
+	GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_8
+		| GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12;
 	GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
@@ -689,8 +633,8 @@ static void MX_GPIO_Init(void)
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-	/*Configure GPIO pins : PD12 PD13 */
-	GPIO_InitStruct.Pin = GPIO_PIN_12 | GPIO_PIN_13;
+	/*Configure GPIO pins : PD12 PD13 PD2 */
+	GPIO_InitStruct.Pin = GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_2;
 	GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
@@ -758,7 +702,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
 void Error_Handler(void)
 {
 	/* USER CODE BEGIN Error_Handler_Debug */
-		  /* User can add his own implementation to report the HAL error return state */
+			/* User can add his own implementation to report the HAL error return state */
 	__disable_irq();
 	while (1)
 	{
@@ -777,8 +721,8 @@ void Error_Handler(void)
 void assert_failed(uint8_t* file, uint32_t line)
 {
 	/* USER CODE BEGIN 6 */
-		  /* User can add his own implementation to report the file name and line number,
-		   ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-		   /* USER CODE END 6 */
+			/* User can add his own implementation to report the file name and line number,
+			 ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+			 /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
