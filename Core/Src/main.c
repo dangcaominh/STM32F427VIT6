@@ -18,14 +18,13 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "fatfs.h"
 #include "lwip.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
 #include "ili9341.h"
-#include "ov2640.h"
+#include "ov5640.h"
 #include "XPT2046_touch.h"
 #include "tcp_server/tcp.h"
 /* USER CODE END Includes */
@@ -51,8 +50,6 @@ DMA_HandleTypeDef hdma_dcmi;
 
 I2C_HandleTypeDef hi2c1;
 
-SD_HandleTypeDef hsd;
-
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim2;
@@ -76,7 +73,6 @@ static void MX_FMC_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_DCMI_Init(void);
-static void MX_SDIO_SD_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
@@ -86,7 +82,7 @@ static void MX_I2C1_Init(void);
 /* USER CODE BEGIN 0 */
 
 extern bool isConnected;
-#define BUF_SIZE	24 * 1024
+#define BUF_SIZE  48 * 1024
 uint8_t cameraData[BUF_SIZE] __attribute__((aligned(4)));
 
 int frame_ready = 0;
@@ -102,70 +98,74 @@ uint32_t t_tcp_done = 0;
 uint32_t dur_capture_ms = 0; // Thời gian chụp (DCMI -> RAM)
 uint32_t dur_tcp_ms = 0;     // Thời gian gửi (RAM -> PC qua TCP)
 
-void Quick_DCMI_DMA_Reset(DCMI_HandleTypeDef *hdcmi)
+/* --- Hàm Helper: Reset JFIFO OV5640 --- */
+void OV5640_Reset_JFIFO(void)
 {
-    DMA_Stream_TypeDef *dma = (DMA_Stream_TypeDef *)hdcmi->DMA_Handle->Instance;
+  OV5640_WR_Reg(0x3002, 0x1C); // Reset JFIFO, SFIFO
+  for (volatile int i = 0; i < 5000; i++); // Loop delay an toàn trong IRQ
+  OV5640_WR_Reg(0x3002, 0x00); // Bật lại JFIFO, SFIFO
+}
 
-    // 1. Tắt DMA Stream trực tiếp trên thanh ghi
-    dma->CR &= ~DMA_SxCR_EN;
+void HAL_DCMI_ErrorCallback(DCMI_HandleTypeDef *hdcmi)
+{
+  // 1. Dừng DCMI bị lỗi tràn
+  HAL_DCMI_Stop(hdcmi);
+  printf("[DCMI] Overrun Error! Resetting Camera JFIFO...\r\n");
 
-    // 2. Chờ phần cứng xác nhận tắt hẳn (chỉ mất khoảng 3-5 chu kỳ clock)
-    while (dma->CR & DMA_SxCR_EN);
+  // 2. Reset bộ đệm nội bộ OV5640
+  OV5640_Reset_JFIFO();
 
-    // 3. Reset trạng thái trong struct HAL để không bị trả về HAL_BUSY
-    hdcmi->DMA_Handle->State = HAL_DMA_STATE_READY;
-    hdcmi->State = HAL_DCMI_STATE_READY;
+  // 3. Clear cờ lỗi DCMI Overrun & khởi động lại DMA
+  __HAL_DCMI_CLEAR_FLAG(hdcmi, DCMI_FLAG_OVFRI);
+  hdcmi->Instance->ICR = 0x1F;
+  t_start_capture = HAL_GetTick();
+  
+  HAL_DCMI_Start_DMA(hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)(&cameraData[0]), BUF_SIZE / 4);
+  __HAL_DCMI_ENABLE_IT(hdcmi, DCMI_IT_FRAME);
 }
 
 void HAL_DCMI_FrameEventCallback(DCMI_HandleTypeDef* hdcmi)
 {
-	t_capture_done = HAL_GetTick(); // 1. Đánh dấu mốc chụp xong frame
-	uint32_t remain = __HAL_DMA_GET_COUNTER(hdcmi->DMA_Handle);
-	uint32_t total_transfers = BUF_SIZE / 4;
-	uint32_t transferred = total_transfers - remain;
-	uint32_t bytes = transferred * 4;
-	jpeg_end = -1;
+  t_capture_done = HAL_GetTick(); // 1. Đánh dấu mốc chụp xong frame
+  uint32_t remain = __HAL_DMA_GET_COUNTER(hdcmi->DMA_Handle);
+  uint32_t total_transfers = BUF_SIZE / 4;
+  uint32_t transferred = total_transfers - remain;
+  uint32_t bytes = transferred * 4;
+  jpeg_end = -1;
 
-	for (int32_t i = bytes - 1; i > 0; i--)
-	{
-		if (cameraData[i - 1] == 0xFF &&
-			cameraData[i] == 0xD9)
-		{
-			jpeg_end = i;
-			break;
-		}
-	}
+  for (int32_t i = bytes - 1; i > 0; i--)
+  {
+    if (cameraData[i - 1] == 0xFF && cameraData[i] == 0xD9)
+    {
+      jpeg_end = i;
+      break;
+    }
+  }
 
-	if (jpeg_end > 0)
-	{
-		//printf("JPEG size = %ld\r\n", jpeg_end);
-	}
-	else
-	{
-		printf("JPEG EOI not found\r\n");
-	}
-	Quick_DCMI_DMA_Reset(hdcmi);
-	frame_ready = 1;
+  if (jpeg_end <= 0)
+  {
+    printf("JPEG EOI not found\r\n");
+  }
+  
+  HAL_DCMI_Stop(hdcmi);
+  frame_ready = 1;
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-	if (GPIO_Pin == LCD_INT_Pin)
-	{
-		if (XPT2046_TouchPressed())
-		{
-		}
-	}
+  if (GPIO_Pin == LCD_INT_Pin)
+  {
+    if (XPT2046_TouchPressed())
+    {
+    }
+  }
 }
 
 int _write(int file, char* data, int len)
 {
-	// Gửi dữ liệu qua UART
-	HAL_UART_Transmit(&huart1, (uint8_t*)data, len, HAL_MAX_DELAY);
-	return len;
+  HAL_UART_Transmit(&huart1, (uint8_t*)data, len, HAL_MAX_DELAY);
+  return len;
 }
-
-
 
 void Camera_Init_OV5640();
 void Camera_Init_OV2640();
@@ -187,7 +187,7 @@ int main(void)
 
   /* MCU Configuration--------------------------------------------------------*/
 
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */  
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
   /* USER CODE BEGIN Init */
@@ -208,8 +208,6 @@ int main(void)
   MX_TIM2_Init();
   MX_SPI1_Init();
   MX_DCMI_Init();
-  MX_SDIO_SD_Init();
-  MX_FATFS_Init();
   MX_USART1_UART_Init();
   MX_LWIP_Init();
   MX_I2C1_Init();
@@ -235,45 +233,70 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1)
-	{
-		uint32_t now = HAL_GetTick();
-		// In thông số mỗi giây (tránh in liên tục gây nghẽn UART)
-		if (now - last_fps_tick >= 1000)
-		{
-			current_fps = (float)frame_counter * 1000.0f / (now - last_fps_tick);
-			frame_counter = 0;
-			last_fps_tick = now;
+  {
+    uint32_t now = HAL_GetTick();
 
-			printf("[STAT] FPS: %d | Cap: %lu ms | TCP: %lu ms | Total: %lu ms\r\n",
-				(int)current_fps, dur_capture_ms, dur_tcp_ms, dur_capture_ms + dur_tcp_ms);
-		}
-		MX_LWIP_Process();
-		if (frame_ready)
-		{
-			if (tcp_sent_count >= jpeg_end + 1)
-			{
-				t_tcp_done = HAL_GetTick();
-				dur_capture_ms = t_capture_done - t_start_capture;
-                dur_tcp_ms = t_tcp_done - t_capture_done;
-				frame_counter++;
+    // 1. In thông số mỗi giây
+    if (now - last_fps_tick >= 1000)
+    {
+      current_fps = (float)frame_counter * 1000.0f / (now - last_fps_tick);
+      frame_counter = 0;
+      last_fps_tick = now;
 
-				frame_ready = 0;
-				tcp_sent_count = 0;
-				hdcmi.Instance->ICR = 0x1F;
-				t_start_capture = HAL_GetTick(); // Đánh dấu mốc bắt đầu Capture frame tiếp theo
-				HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)(&cameraData[0]), BUF_SIZE / 4);
-				__HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
-			}
-			else
-			{
-				int sent = tcp_send_chunk((uint8_t*)&cameraData[tcp_sent_count], jpeg_end + 1 - tcp_sent_count);
-				tcp_sent_count += sent;
-			}
-		}
+      printf("[STAT] FPS: %d | Cap: %lu ms | TCP: %lu ms | Total: %lu ms\r\n",
+        (int)current_fps, dur_capture_ms, dur_tcp_ms, dur_capture_ms + dur_tcp_ms);
+    }
+
+    MX_LWIP_Process();
+
+    // 2. WATCHDOG: Cứu camera nếu bị kẹt ngắt VSYNC quá 300ms
+    if ((now - t_start_capture > 300) && (!frame_ready))
+    {
+      printf("[WDG] Camera Frozen! Executing JFIFO Reset...\r\n");
+      HAL_DCMI_Stop(&hdcmi);
+
+      // Reset JFIFO OV5640
+      OV5640_WR_Reg(0x3002, 0x1C);
+      HAL_Delay(1);
+      OV5640_WR_Reg(0x3002, 0x00);
+
+      // Xóa toàn bộ cờ ngắt cũ và kích hoạt lại DCMI Single Snapshot
+      hdcmi.Instance->ICR = 0x1F;
+      t_start_capture = HAL_GetTick();
+      HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)(&cameraData[0]), BUF_SIZE / 4);
+      __HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
+    }
+
+    // 3. Xử lý truyền TCP
+    if (frame_ready)
+    {
+      if (tcp_sent_count >= jpeg_end + 1)
+      {
+        t_tcp_done = HAL_GetTick();
+        dur_capture_ms = t_capture_done - t_start_capture;
+        dur_tcp_ms = t_tcp_done - t_capture_done;
+        frame_counter++;
+
+        frame_ready = 0;
+        tcp_sent_count = 0;
+        hdcmi.Instance->ICR = 0x1F;
+        t_start_capture = HAL_GetTick(); // Đánh dấu mốc bắt đầu Capture frame tiếp theo
+        HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)(&cameraData[0]), BUF_SIZE / 4);
+        __HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
+      }
+      else
+      {
+        int sent = tcp_send_chunk((uint8_t*)&cameraData[tcp_sent_count], jpeg_end + 1 - tcp_sent_count);
+        if (sent > 0)
+        {
+          tcp_sent_count += sent;
+        }
+      }
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	}
+  }
   /* USER CODE END 3 */
 }
 
@@ -408,34 +431,6 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
-
-}
-
-/**
-  * @brief SDIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_SDIO_SD_Init(void)
-{
-
-  /* USER CODE BEGIN SDIO_Init 0 */
-
-  /* USER CODE END SDIO_Init 0 */
-
-  /* USER CODE BEGIN SDIO_Init 1 */
-
-  /* USER CODE END SDIO_Init 1 */
-  hsd.Instance = SDIO;
-  hsd.Init.ClockEdge = SDIO_CLOCK_EDGE_RISING;
-  hsd.Init.ClockBypass = SDIO_CLOCK_BYPASS_DISABLE;
-  hsd.Init.ClockPowerSave = SDIO_CLOCK_POWER_SAVE_DISABLE;
-  hsd.Init.BusWide = SDIO_BUS_WIDE_4B;
-  hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_DISABLE;
-  hsd.Init.ClockDiv = 4;
-  /* USER CODE BEGIN SDIO_Init 2 */
-
-  /* USER CODE END SDIO_Init 2 */
 
 }
 
@@ -702,8 +697,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PC0 PC2 PC3 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_2|GPIO_PIN_3;
+  /*Configure GPIO pins : PC0 PC2 PC3 PC8
+                           PC9 PC10 PC11 PC12 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_2|GPIO_PIN_3|GPIO_PIN_8
+                          |GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_12;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
@@ -724,8 +721,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PD12 PD13 */
-  GPIO_InitStruct.Pin = GPIO_PIN_12|GPIO_PIN_13;
+  /*Configure GPIO pins : PD12 PD13 PD2 */
+  GPIO_InitStruct.Pin = GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_2;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
@@ -800,8 +797,7 @@ void Error_Handler(void)
 	}
   /* USER CODE END Error_Handler_Debug */
 }
-
-#ifdef  USE_FULL_ASSERT
+#ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.

@@ -63,20 +63,12 @@ uint8_t OV5640_Init(void)
 		printf("ID: %d \r\n", reg);
 		return 1;
 	}
-	OV5640_WR_Reg(0x3103, 0X11);	//system clock from pad, bit[1]
-	OV5640_WR_Reg(0X3008, 0X82);
 	HAL_Delay(10);
 
 	for (i = 0;i < sizeof(ov5640_init_reg_tbl) / 4;i++)
 	{
 		OV5640_WR_Reg(ov5640_init_reg_tbl[i][0], ov5640_init_reg_tbl[i][1]);
 	}
-
-	HAL_Delay(50);
-	// Test for flash light
-	OV5640_Flash_Lamp(1);
-	HAL_Delay(50);
-	OV5640_Flash_Lamp(0);
 
 	return 0x00; 	//ok
 }
