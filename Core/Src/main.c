@@ -172,6 +172,8 @@ void Camera_Init_OV2640();
 void LCD_Init();
 int32_t tcp_sent_count = 0;
 
+extern bool initDone;
+
 /* USER CODE END 0 */
 
 /**
@@ -212,17 +214,13 @@ int main(void)
   MX_LWIP_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-	if (init_tcp_client() != 0)
-	{
-		Error_Handler();
-	}
-
-	while (!isConnected)
-	{
-		MX_LWIP_Process();
-	}
-	LCD_Init();
-	Camera_Init_OV5640();
+  LCD_Init();
+  Camera_Init_OV5640();
+	while (init_tcp_client() != ERR_OK)
+{
+    MX_LWIP_Process();
+    HAL_Delay(100);
+  }
 
 	/* Start the Camera capture */
 	__HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);

@@ -20,6 +20,7 @@ static err_t tcp_connect_callback(void* arg, struct tcp_pcb* tpcb, err_t err)
     else
     {
         printf("Ket noi loi, ma loi: %d\r\n", err);
+        isConnected = 0;
         tcp_close(tpcb);
     }
     return ERR_OK;
