@@ -203,6 +203,7 @@ static int8_t VIDEO_Itf_Control(uint8_t cmd, uint8_t *pbuf, uint16_t length)
   return (0);
 }
 
+
 /**
   * @brief  TEMPLATE_Data
   *         Manage the UVC data packets
@@ -241,7 +242,6 @@ static int8_t VIDEO_Itf_Data(uint8_t **pbuf, uint16_t *psize, uint16_t *pcktidx)
   }
 
   remaining = video_frame_size - video_offset;
-  printf("Remaining = %d", remaining);
   packet_size = (remaining > UVC_APP_PAYLOAD_SIZE)
                   ? UVC_PACKET_SIZE
                   : (uint16_t)(remaining + 2U);

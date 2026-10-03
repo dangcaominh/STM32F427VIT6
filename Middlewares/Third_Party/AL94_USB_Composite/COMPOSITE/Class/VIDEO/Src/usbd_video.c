@@ -678,16 +678,22 @@ static uint8_t USBD_VIDEO_DataIn(USBD_HandleTypeDef *pdev, uint8_t epnum)
 static uint8_t USBD_VIDEO_SOF(USBD_HandleTypeDef *pdev)
 {
   USBD_VIDEO_HandleTypeDef *hVIDEO = (USBD_VIDEO_HandleTypeDef *)pdev->pClassData_UVC;
-  uint8_t payload[2] = {0x02U, 0x00U};
+  static uint8_t payload[2] = {0x02U, 0x00U};
 
   /* Check if the Streaming has already been started by SetInterface AltSetting 1 */
   if (hVIDEO->uvc_state == UVC_PLAY_STATUS_READY)
   {
-    /* Transmit the first packet indicating that Streaming is starting */
-    (void)USBD_LL_Transmit(pdev, UVC_IN_EP, (uint8_t *)payload, 2U);
+    USBD_StatusTypeDef status;
 
-    /* Enable Streaming state */
-    hVIDEO->uvc_state = UVC_PLAY_STATUS_STREAMING;
+    status = USBD_LL_Transmit(pdev,
+      UVC_IN_EP,
+      payload,
+      2U);
+
+    if (status == USBD_OK)
+    {
+      hVIDEO->uvc_state = UVC_PLAY_STATUS_STREAMING;
+    }
   }
 
   /* Exit with no error code */
@@ -703,8 +709,14 @@ static uint8_t USBD_VIDEO_SOF(USBD_HandleTypeDef *pdev)
   */
 static uint8_t USBD_VIDEO_IsoINIncomplete(USBD_HandleTypeDef *pdev, uint8_t epnum)
 {
-  UNUSED(pdev);
-  UNUSED(epnum);
+
+  USBD_VIDEO_HandleTypeDef *hVIDEO =
+      (USBD_VIDEO_HandleTypeDef *)pdev->pClassData_UVC;
+
+  if (epnum == (UVC_IN_EP & 0x7FU))
+  {
+    hVIDEO->uvc_state = UVC_PLAY_STATUS_READY;
+  }
 
   return (uint8_t)USBD_OK;
 }

@@ -128,7 +128,6 @@ void HAL_DCMI_FrameEventCallback(DCMI_HandleTypeDef* hdcmi)
 
   if ((jpeg_start < 0) || (jpeg_end < jpeg_start))
   {
-    printf("Invalid JPEG frame\r\n");
     /*
      * Do not leave the capture state idle after a malformed frame.
      * The main loop will retry once the DCMI callback has returned.
@@ -175,7 +174,6 @@ void Camera_Init_OV5640();
 void Camera_Init_OV2640();
 void LCD_Init();
 int32_t tcp_sent_count = 0;
-
 extern bool initDone;
 
 /* USER CODE END 0 */
@@ -243,12 +241,12 @@ int main(void)
       jpeg_end = -1;
       jpeg_size = 0U;
       t_start_capture = HAL_GetTick();
-      (void)HAL_DCMI_Start_DMA(&hdcmi,
+      __HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
+      HAL_DCMI_Start_DMA(&hdcmi,
                                DCMI_MODE_SNAPSHOT,
                                (uint32_t)cameraData,
                                BUF_SIZE / 4);
     }
-
     HAL_Delay(1);
     /* USER CODE END WHILE */
 

@@ -77,6 +77,20 @@
 #define USBD_SELF_POWERED                 1U
 /*---------- -----------*/
 
+/*
+ * The OTG HS peripheral is used with the embedded Full-Speed PHY.
+ * Keep the application packet size equal to the FS isochronous endpoint
+ * maximum packet size; otherwise the UVC class can submit 512-byte packets
+ * to a 256-byte Full-Speed endpoint.
+ */
+#ifndef UVC_ISO_FS_MPS
+#define UVC_ISO_FS_MPS                   256U
+#endif
+
+#ifndef UVC_PACKET_SIZE
+#define UVC_PACKET_SIZE                  UVC_ISO_FS_MPS
+#endif
+
 
 /****************************************/
 /* #define for FS and HS identification */
