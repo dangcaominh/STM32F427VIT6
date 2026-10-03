@@ -59,6 +59,9 @@ void EXTI2_IRQHandler(void);
 void TIM1_UP_TIM10_IRQHandler(void);
 void DMA2_Stream0_IRQHandler(void);
 void DMA2_Stream1_IRQHandler(void);
+void OTG_HS_EP1_OUT_IRQHandler(void);
+void OTG_HS_EP1_IN_IRQHandler(void);
+void OTG_HS_IRQHandler(void);
 void DCMI_IRQHandler(void);
 /* USER CODE BEGIN EFP */
 

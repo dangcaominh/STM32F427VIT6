@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>STM32F427 UVC MJPEG qua USB - Flow và Debug</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color:#202124; line-height:1.45; font-size:10.5pt; }
+  h1 { color:#123c69; font-size:25pt; margin-bottom:4px; }
+  h2 { color:#155a8a; border-bottom:1px solid #b9c8d6; padding-bottom:3px; margin-top:22px; }
+  h3 { color:#234f70; margin-top:16px; }
+  .subtitle { color:#555; font-size:12pt; }
+  .box { background:#eef6fb; border-left:4px solid #2878ad; padding:9px 12px; margin:10px 0; }
+  .warn { background:#fff5df; border-left:4px solid #d98d00; padding:9px 12px; margin:10px 0; }
+  code { font-family: Consolas, monospace; background:#f1f3f4; padding:1px 3px; }
+  pre { font-family: Consolas, monospace; font-size:8.5pt; background:#f5f7f9; border:1px solid #d8dee4; padding:9px; white-space:pre-wrap; }
+  table { width:100%; border-collapse:collapse; margin:8px 0 14px; }
+  th,td { border:1px solid #bfc7ce; padding:5px 7px; vertical-align:top; }
+  th { background:#e8f0f6; text-align:left; }
+  .small { font-size:9pt; color:#555; }
+  .pagebreak { page-break-before:always; }
+  .flow { font-family:Consolas, monospace; background:#f7fafc; border:1px solid #ccd9e3; padding:12px; line-height:1.65; }
+  ul { margin-top:4px; }
+</style>
+</head>
+<body>
+<h1>STM32F427: truyền MJPEG qua USB UVC</h1>
+<div class="subtitle">Flow khởi tạo, USB enumeration, descriptor, interrupt và phương pháp debug từng bước</div>
+<p class="small">Tài liệu bám theo project STM32F427VIT6, USB Composite CDC + UVC, OV5640, DCMI và USB OTG HS peripheral chạy Embedded PHY ở Full-Speed.</p>
+
+<div class="box"><b>Mục tiêu:</b> hiểu vì sao Windows Camera gọi được SOF nhưng chưa gọi <code>VIDEO_Itf_Data()</code>, và biết đặt breakpoint ở đúng tầng thay vì dừng liên tục trong SOF.</div>
+
+<h2>1. Bức tranh tổng thể</h2>
+<div class="flow">
+PC Windows Camera<br>
+  │ USB control requests: GET_DESCRIPTOR, SET_CONFIGURATION, PROBE/COMMIT, SET_INTERFACE<br>
+  ▼<br>
+USB OTG HS peripheral (embedded PHY, Full-Speed)<br>
+  │ HAL_PCD_IRQHandler() trong OTG_HS_IRQHandler()<br>
+  ▼<br>
+usbd_conf.c: PCD callbacks → usbd_core.c<br>
+  ├─ Control/setup → USBD_COMPOSITE_Setup()<br>
+  ├─ SOF → USBD_COMPOSITE_SOF() → USBD_VIDEO_SOF()<br>
+  └─ IN transfer complete → USBD_COMPOSITE_DataIn() → USBD_VIDEO_DataIn()<br>
+                                                   │<br>
+                                                   ▼<br>
+                                      VIDEO_Itf_Data() trong usbd_video_if.c<br>
+                                                   │<br>
+                                                   ▼<br>
+                                     JPEG buffer cameraData[] → USB ISO IN
+</div>
+
+<h2>2. Các khái niệm cần nắm</h2>
+<h3>2.1 Endpoint</h3>
+<p>Endpoint là kênh logic giữa host và device. Hướng truyền nằm trong bit 7 của địa chỉ:</p>
+<table><tr><th>Địa chỉ</th><th>Ý nghĩa</th></tr>
+<tr><td><code>0x00</code></td><td>Control OUT, luôn thuộc endpoint 0.</td></tr>
+<tr><td><code>0x80</code></td><td>Control IN, endpoint 0.</td></tr>
+<tr><td><code>0x81</code></td><td>Endpoint 1 IN.</td></tr>
+<tr><td><code>0x83</code></td><td>Endpoint 3 IN. Composite có thể remap UVC sang địa chỉ này.</td></tr></table>
+<p>Trong code, callback nhận <code>epnum</code> không có bit hướng. Vì vậy <code>0x83 &amp; 0x7F = 3</code>.</p>
+
+<h3>2.2 Transfer type</h3>
+<table><tr><th>Loại</th><th>Dùng cho</th><th>Đặc điểm</th></tr>
+<tr><td>Control</td><td>Enumeration, descriptor, UVC probe/commit, interface</td><td>Endpoint 0, có request/response và status stage.</td></tr>
+<tr><td>Bulk</td><td>CDC data</td><td>Đảm bảo dữ liệu, không đảm bảo latency.</td></tr>
+<tr><td>Interrupt</td><td>CDC command/HID</td><td>Polling định kỳ, gói nhỏ.</td></tr>
+<tr><td>Isochronous</td><td>UVC video</td><td>Ưu tiên bandwidth/đúng nhịp; mất gói không retransmit.</td></tr></table>
+
+<h3>2.3 Descriptor</h3>
+<p>Descriptor là dữ liệu cấu hình mà device trả cho host. Host không tự đoán camera; nó đọc descriptor để biết có bao nhiêu interface, endpoint, format, kích thước và frame interval.</p>
+<table><tr><th>Descriptor</th><th>Vai trò trong project</th></tr>
+<tr><td>Device</td><td>VID/PID, USB version, số configuration.</td></tr>
+<tr><td>Configuration</td><td>Tổng số interface, power, tổng độ dài descriptor.</td></tr>
+<tr><td>Interface Association (IAD)</td><td>Gom VideoControl + VideoStreaming thành một chức năng camera.</td></tr>
+<tr><td>VC interface</td><td>Điều khiển UVC.</td></tr>
+<tr><td>VS interface alt 0</td><td>Streaming chưa mở endpoint.</td></tr>
+<tr><td>VS interface alt 1</td><td>Streaming, có ISO IN endpoint.</td></tr>
+<tr><td>Format MJPEG / Frame</td><td>Quảng bá 320x240 và frame interval.</td></tr>
+<tr><td>Endpoint</td><td>Địa chỉ, ISO, max packet size, interval.</td></tr></table>
+
+<h3>2.4 FIFO và PMA</h3>
+<p><b>FIFO USB OTG:</b> STM32F4 OTG HS có Rx FIFO và Tx FIFO trong USB core. Với project này, <code>HAL_PCDEx_SetTxFiFoInBytes()</code> cấu hình Tx FIFO cho các endpoint IN. UVC phải có FIFO đủ cho packet ISO.</p>
+<p><b>PMA:</b> Packet Memory Area là vùng RAM đặc biệt của USB FS peripheral trên một số STM32 (đặc biệt USB FS device IP). PMA được dùng để chứa packet endpoint và được cấu hình bằng <code>HAL_PCDEx_PMAConfig()</code>. Project này dùng <code>USB_OTG_HS</code> + embedded PHY, nên dùng OTG FIFO, không dùng PMA cho đường UVC đang chạy.</p>
+<div class="warn"><b>Phân biệt:</b> DCMI DMA chép pixel/JPEG từ OV5640 vào <code>cameraData[]</code>. USB OTG DMA (nếu bật) là cơ chế khác. Tắt USB OTG DMA không tắt DCMI DMA.</div>
+
+<h2>3. Flow khởi tạo từ reset tới USB ready</h2>
+<ol>
+<li><code>HAL_Init()</code>: SysTick, HAL.</li>
+<li><code>SystemClock_Config()</code>: clock MCU.</li>
+<li><code>MX_USB_OTG_HS_PCD_Init()</code>: cấu hình OTG HS peripheral. Project hiện dùng <code>PCD_SPEED_FULL</code>, embedded PHY, SOF enable.</li>
+<li><code>MX_USB_DEVICE_Init()</code>:
+  <ul><li><code>USBD_COMPOSITE_Mount_Class()</code> ghép CDC/UVC descriptor và remap interface/endpoint.</li>
+  <li><code>USBD_Init(..., DEVICE_HS)</code> liên kết USB device core với PCD.</li>
+  <li><code>USBD_RegisterClass(..., USBD_COMPOSITE)</code>.</li>
+  <li><code>USBD_VIDEO_RegisterInterface(...)</code> gắn callback ứng dụng.</li></ul>
+</li>
+<li><code>LCD_Init()</code>, <code>Camera_Init_OV5640()</code>, bật DCMI interrupt và bắt đầu DCMI DMA snapshot.</li>
+</ol>
+
+<h2>4. Enumeration và UVC negotiation</h2>
+<div class="flow">
+USB reset<br>
+→ GET_DESCRIPTOR(Device)<br>
+→ SET_ADDRESS<br>
+→ GET_DESCRIPTOR(Configuration)<br>
+→ SET_CONFIGURATION(1)<br>
+→ UVC GET_CUR/GET_MIN/GET_MAX(PROBE)<br>
+→ UVC SET_CUR(PROBE)<br>
+→ UVC GET_CUR(PROBE)<br>
+→ UVC SET_CUR(COMMIT)<br>
+→ SET_INTERFACE(VideoStreaming, alt 1)<br>
+→ SOF bắt đầu stream
+</div>
+<p>Request control đi qua:</p>
+<pre>OTG_HS_IRQHandler()
+  → HAL_PCD_IRQHandler()
+    → HAL_PCD_SetupStageCallback()
+      → USBD_LL_SetupStage()
+        → USBD_COMPOSITE_Setup()
+          → USBD_VIDEO.Setup()</pre>
+<p>Điều kiện để UVC chuyển sang <code>READY</code> nằm trong <code>USBD_VIDEO_Setup()</code>: device phải <code>CONFIGURED</code>, interface phải là VS interface, và <code>wValue == 1</code>.</p>
+
+<h2>5. Flow SOF và gửi gói đầu tiên</h2>
+<pre>USB frame tick (Full-Speed: mỗi 1 ms)
+  → HAL_PCD_SOFCallback()
+    → USBD_LL_SOF()
+      → USBD_COMPOSITE_SOF()
+        → USBD_VIDEO.SOF()
+          nếu uvc_state == READY:
+             USBD_LL_Transmit(UVC_IN_EP, payload_header, 2)
+             uvc_state = STREAMING</pre>
+<p>SOF chạy liên tục kể cả khi <code>uvc_state == STOP</code>. Vì vậy breakpoint trong SOF sẽ dừng liên tục nhưng không có nghĩa video đang truyền.</p>
+
+<h2>6. Flow IN transfer complete tới VIDEO_Itf_Data()</h2>
+<pre>USB host hoàn tất ISO IN transfer
+  → OTG_HS_IRQHandler()
+    → HAL_PCD_IRQHandler()
+      → HAL_PCD_DataInStageCallback(hpcd, epnum)
+        → USBD_LL_DataInStage()
+          → USBD_COMPOSITE_DataIn()
+            nếu epnum == (UVC_IN_EP &amp; 0x7F):
+              → USBD_VIDEO.DataIn()
+                nếu uvc_state == STREAMING:
+                  → VIDEO_Itf_Data(&amp;pbuf, &amp;psize, &amp;pcktidx)
+                  → thêm UVC header
+                  → USBD_LL_Transmit() packet kế tiếp</pre>
+<p>Nếu <code>VIDEO_Itf_Data()</code> không chạy, hãy debug từ dưới lên:</p>
+<ol>
+<li><code>USBD_VIDEO_SOF()</code> có chuyển <code>STOP → READY → STREAMING</code> không?</li>
+<li><code>USBD_LL_Transmit()</code> có được gọi với đúng <code>UVC_IN_EP</code> không?</li>
+<li><code>HAL_PCD_DataInStageCallback()</code> có chạy không?</li>
+<li><code>epnum</code> có bằng <code>UVC_IN_EP &amp; 0x7F</code> không?</li>
+<li><code>USBD_COMPOSITE_DataIn()</code> có route sang <code>USBD_VIDEO.DataIn()</code> không?</li>
+</ol>
+
+<h2>7. Flow dữ liệu camera</h2>
+<pre>OV5640 JPEG output
+  → DCMI peripheral
+    → DMA2 stream
+      → cameraData[48 KB]
+        → HAL_DCMI_FrameEventCallback()
+          → tìm FF D8 và FF D9
+            → jpeg_size
+              → VIDEO_Itf_Data()
+                → payload UVC 2-byte header + JPEG bytes</pre>
+<p>Hai DMA độc lập:</p>
+<table><tr><th>DMA</th><th>Nguồn → đích</th><th>Callback/điểm debug</th></tr>
+<tr><td>DCMI DMA</td><td>Camera → <code>cameraData[]</code></td><td><code>HAL_DCMI_FrameEventCallback()</code></td></tr>
+<tr><td>USB OTG DMA (nếu bật)</td><td>RAM → USB FIFO</td><td>PCD/OTG interrupt</td></tr></table>
+
+<h2>8. Checklist debug cho tình trạng uvc_state = 0</h2>
+<table><tr><th>Bước</th><th>Đặt breakpoint/log</th><th>Kết quả mong đợi</th></tr>
+<tr><td>1</td><td><code>USBD_COMPOSITE_Setup()</code></td><td>Thấy request UVC và SET_INTERFACE.</td></tr>
+<tr><td>2</td><td><code>USBD_VIDEO_Setup()</code>, case SET_INTERFACE</td><td><code>req-&gt;wIndex == UVC_VS_IF_NUM</code>, <code>wValue == 1</code>.</td></tr>
+<tr><td>3</td><td>Sau gán state</td><td><code>uvc_state = UVC_PLAY_STATUS_READY</code>.</td></tr>
+<tr><td>4</td><td><code>USBD_VIDEO_SOF()</code></td><td>Một lần thấy READY, sau đó STREAMING.</td></tr>
+<tr><td>5</td><td><code>HAL_PCD_DataInStageCallback()</code></td><td>Chạy với <code>epnum = UVC_IN_EP &amp; 0x7F</code>.</td></tr>
+<tr><td>6</td><td><code>USBD_COMPOSITE_DataIn()</code></td><td>Điều kiện UVC đúng.</td></tr>
+<tr><td>7</td><td><code>VIDEO_Itf_Data()</code></td><td><code>frame_ready != 0</code>, <code>jpeg_size &gt; 0</code>.</td></tr></table>
+
+<div class="warn"><b>Không breakpoint dừng liên tục trong SOF/IRQ.</b> USB cần tiếp tục chạy. Dùng logpoint, counter volatile hoặc breakpoint có điều kiện; dừng lâu sẽ làm host timeout và gửi SET_INTERFACE(0).</div>
+
+<h2>9. Các giá trị nên kiểm tra trong debugger</h2>
+<pre>UVC_IN_EP
+UVC_VC_IF_NUM
+UVC_VS_IF_NUM
+hVIDEO-&gt;uvc_state
+pdev-&gt;dev_state
+pdev-&gt;dev_speed
+pdev-&gt;ep_in[UVC_IN_EP &amp; 0x0F].maxpacket
+pdev-&gt;ep_in[UVC_IN_EP &amp; 0x0F].is_used
+epnum                       /* tại HAL_PCD_DataInStageCallback */
+frame_ready
+jpeg_size
+uvc_capture_request</pre>
+<p>Trong cấu hình composite hiện tại, UVC thường được mount trước CDC nên interface video thường là 0/1 và UVC endpoint thường bắt đầu ở 0x81. Tuy nhiên hãy dùng giá trị runtime; không giả định endpoint là 0x81 hoặc 0x83.</p>
+
+<h2>10. Lưu ý bandwidth</h2>
+<p>USB Full-Speed có frame 1 ms. Project đang dùng embedded PHY và <code>PCD_SPEED_FULL</code>, vì vậy bắt đầu với 320x240 MJPEG ở 5 FPS. JPEG thực tế phải nhỏ hơn buffer camera và được truyền qua nhiều ISO packet. 60 FPS ở cấu hình Full-Speed là không thực tế.</p>
+
+<h2>11. Tóm tắt một câu</h2>
+<p><b>SOF chỉ là nhịp đồng hồ; DATA chỉ chạy sau khi host đã SET_INTERFACE alt 1 và USB controller hoàn tất gói ISO IN đầu tiên.</b> Khi debug, tìm request SET_INTERFACE trước, sau đó theo dõi DataIn callback và endpoint number.</p>
+
+<hr>
+<p class="small">Các file tham chiếu trong project: <code>Core/Src/usb_otg.c</code>, <code>Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/Target/usbd_conf.c</code>, <code>Class/COMPOSITE/Src/usbd_composite.c</code>, <code>Class/VIDEO/Src/usbd_video.c</code>, <code>App/usbd_video_if.c</code>.</p>
+</body>
+</html>
