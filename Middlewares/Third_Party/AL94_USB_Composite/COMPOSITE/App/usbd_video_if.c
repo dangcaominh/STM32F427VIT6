@@ -32,7 +32,8 @@
 /* #include "img_bin.h" */
 
 /* USER CODE BEGIN INCLUDE */
-
+#include <stddef.h>
+#include <stdint.h>
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,7 +42,10 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-
+extern uint8_t cameraData[];
+extern volatile int frame_ready;
+extern volatile uint32_t jpeg_size;
+extern volatile uint8_t uvc_capture_request;
 /* USER CODE END PV */
 
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
@@ -72,7 +76,7 @@
   */
 
 /* USER CODE BEGIN PRIVATE_DEFINES */
-
+#define UVC_APP_PAYLOAD_SIZE       (UVC_PACKET_SIZE - 2U)
 /* USER CODE END PRIVATE_DEFINES */
 
 /**
@@ -98,7 +102,8 @@
   */
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
-
+static uint32_t video_offset = 0U;
+static uint32_t video_frame_size = 0U;
 /* USER CODE END PRIVATE_VARIABLES */
 
 /**
@@ -160,7 +165,8 @@ static int8_t VIDEO_Itf_Init(void)
   /*
      Add your initialization code here
   */
-
+  video_offset = 0U;
+  video_frame_size = 0U;
   return (0);
 }
 
@@ -175,6 +181,8 @@ static int8_t VIDEO_Itf_DeInit(void)
   /*
      Add your deinitialization code here
   */
+  video_offset = 0U;
+  video_frame_size = 0U;
   return (0);
 }
 
@@ -189,7 +197,9 @@ static int8_t VIDEO_Itf_DeInit(void)
   */
 static int8_t VIDEO_Itf_Control(uint8_t cmd, uint8_t *pbuf, uint16_t length)
 {
-
+  (void)cmd;
+  (void)pbuf;
+  (void)length;
   return (0);
 }
 
@@ -203,7 +213,52 @@ static int8_t VIDEO_Itf_Control(uint8_t cmd, uint8_t *pbuf, uint16_t length)
   */
 static int8_t VIDEO_Itf_Data(uint8_t **pbuf, uint16_t *psize, uint16_t *pcktidx)
 {
+  uint32_t remaining;
+  uint16_t packet_size;
 
+  if ((pbuf == NULL) || (psize == NULL) || (pcktidx == NULL))
+  {
+    return (-1);
+  }
+
+  /*
+   * The class driver adds the two-byte UVC payload header. Therefore psize
+   * includes those two bytes, while pbuf points only to JPEG data.
+   */
+  if ((video_frame_size == 0U) && (frame_ready != 0) && (jpeg_size > 0U))
+  {
+    video_frame_size = jpeg_size;
+    video_offset = 0U;
+    frame_ready = 0;
+  }
+
+  if ((video_frame_size == 0U) || (video_offset >= video_frame_size))
+  {
+    *pbuf = NULL;
+    *psize = 0U;
+    *pcktidx = 0U;
+    return (0);
+  }
+
+  remaining = video_frame_size - video_offset;
+  printf("Remaining = %d", remaining);
+  packet_size = (remaining > UVC_APP_PAYLOAD_SIZE)
+                  ? UVC_PACKET_SIZE
+                  : (uint16_t)(remaining + 2U);
+
+  *pbuf = &cameraData[video_offset];
+  *psize = packet_size;
+  *pcktidx = (uint16_t)video_offset;
+
+  video_offset += (uint32_t)packet_size - 2U;
+
+  if (video_offset >= video_frame_size)
+  {
+    video_offset = 0U;
+    video_frame_size = 0U;
+    jpeg_size = 0U;
+    uvc_capture_request = 1U;
+  }
   return (0);
 }
 

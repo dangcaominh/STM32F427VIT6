@@ -31,7 +31,7 @@
 	MiddleWare version :
 */
 /*---------- _USBD_USE_HS  -----------*/
-#define _USBD_USE_HS      false
+#define _USBD_USE_HS      true
 
 /*---------- _USBD_USE_CDC_ACM  -----------*/
 #define _USBD_USE_CDC_ACM      true

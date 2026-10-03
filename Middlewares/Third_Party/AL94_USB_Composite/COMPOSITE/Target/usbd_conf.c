@@ -332,7 +332,12 @@ USBD_StatusTypeDef USBD_LL_Init(USBD_HandleTypeDef *pdev)
 #if (USBD_USE_UAC_SPKR == 1)
 #endif
 #if (USBD_USE_UVC == 1)
-    HAL_PCDEx_SetTxFiFoInBytes(hpcd_USB_OTG_PTR, (UVC_IN_EP & 0x7F), 128);
+    /*
+     * The active DEVICE_HS path uses the HS PCD with its embedded FS PHY.
+     * UVC still advertises a 256-byte FS isochronous packet, so reserve
+     * enough FIFO space for the complete transfer.
+     */
+    HAL_PCDEx_SetTxFiFoInBytes(hpcd_USB_OTG_PTR, (UVC_IN_EP & 0x7F), 512);
 #endif
 #if (USBD_USE_MSC == 1)
     HAL_PCDEx_SetTxFiFoInBytes(hpcd_USB_OTG_PTR, (MSC_IN_EP & 0x7F), 128);
