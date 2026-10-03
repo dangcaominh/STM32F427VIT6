@@ -216,7 +216,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   LCD_Init();
   Camera_Init_OV5640();
-	while (init_tcp_client() != ERR_OK)
+  while (init_tcp_client() != ERR_OK)
 {
     MX_LWIP_Process();
     HAL_Delay(100);
@@ -255,6 +255,7 @@ int main(void)
 
       // Reset JFIFO OV5640
       OV5640_WR_Reg(0x3002, 0x1C);
+
       HAL_Delay(1);
       OV5640_WR_Reg(0x3002, 0x00);
 
