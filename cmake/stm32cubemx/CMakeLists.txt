@@ -11,7 +11,6 @@ set(MX_Defines_Syms
 # STM32CubeMX generated include paths
 set(MX_Include_Dirs
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Composite
     ${CMAKE_CURRENT_SOURCE_DIR}/../../LWIP/App
     ${CMAKE_CURRENT_SOURCE_DIR}/../../LWIP/Target
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/LwIP/src/include
@@ -33,12 +32,6 @@ set(MX_Include_Dirs
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/LwIP/src/include/compat/stdc
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/LwIP/system/arch
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Drivers/CMSIS/Include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/Class/COMPOSITE/Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/Core/Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/App
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/Target
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/Class/CDC_ACM/Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/Class/VIDEO/Inc
 )
 
 # STM32CubeMX generated application sources
@@ -103,19 +96,6 @@ set(STM32_Drivers_Src
 # Drivers Midllewares
 
 
-set(Composite_Src
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/Class/VIDEO/Src/usbd_video.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/App/usbd_video_if.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/Class/CDC_ACM/Src/usbd_cdc_acm.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/App/usbd_cdc_acm_if.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/Core/Src/usbd_core.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/Core/Src/usbd_ctlreq.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/Core/Src/usbd_ioreq.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/App/usb_device.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/App/usbd_desc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/Target/usbd_conf.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/AL94_USB_Composite/COMPOSITE/Class/COMPOSITE/Src/usbd_composite.c
-)
 set(LwIP_Src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/LwIP/src/netif/ppp/auth.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/LwIP/src/netif/ppp/ccp.c
@@ -207,7 +187,7 @@ set(MX_LINK_DIRS
 set(MX_LINK_LIBS 
     STM32_Drivers
     ${TOOLCHAIN_LINK_LIBRARIES}
-    Composite	LwIP	
+    LwIP	
 )
 # Interface library for includes and symbols
 add_library(stm32cubemx INTERFACE)
@@ -219,11 +199,6 @@ add_library(STM32_Drivers OBJECT)
 target_sources(STM32_Drivers PRIVATE ${STM32_Drivers_Src})
 target_link_libraries(STM32_Drivers PUBLIC stm32cubemx)
 
-
-# Create Composite static library
-add_library(Composite OBJECT)
-target_sources(Composite PRIVATE ${Composite_Src})
-target_link_libraries(Composite PUBLIC stm32cubemx)
 
 # Create LwIP static library
 add_library(LwIP OBJECT)

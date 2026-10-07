@@ -47,6 +47,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
 file(GLOB_RECURSE OV5640_SOURCES "${CMAKE_SOURCE_DIR}/Drivers/BSP/OV5640/*.c")
 file(GLOB_RECURSE OV2640_SOURCES "${CMAKE_SOURCE_DIR}/Drivers/BSP/OV2640/*.c")
+file(GLOB_RECURSE USB_COMPOSITE_SOURCES "${CMAKE_SOURCE_DIR}/Drivers/BSP/USB_COMPOSITE/*.c")
 file(GLOB CAMERA_SOURCES CONFIGURE_DEPENDS "Core/Src/camera/*.c")
 file(GLOB LCD_SOURCES CONFIGURE_DEPENDS "Core/Src/lcd/*.c")
 file(GLOB TCP_SERVER_SOURCES CONFIGURE_DEPENDS "Core/Src/tcp_server/*.c")
@@ -60,6 +61,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${LCD_SOURCES}
     ${OV5640_SOURCES}
     ${OV2640_SOURCES}
+    ${USB_COMPOSITE_SOURCES}
 )
 
 
@@ -69,6 +71,14 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Inc/lcd
     Drivers/BSP/OV5640
     Drivers/BSP/OV2640
+    Drivers/BSP/USB_COMPOSITE
+    Drivers/BSP/USB_COMPOSITE/App
+    Drivers/BSP/USB_COMPOSITE/Target
+    Drivers/BSP/USB_COMPOSITE/Core/Inc
+    Drivers/BSP/USB_COMPOSITE/Class/CDC_ACM/Inc
+    Drivers/BSP/USB_COMPOSITE/Class/DFU/Inc
+    Drivers/BSP/USB_COMPOSITE/Class/VIDEO/Inc
+    Drivers/BSP/USB_COMPOSITE/Class/COMPOSITE/Inc
     # Core/Src/lvgl
     # Core/Src/ui
 )

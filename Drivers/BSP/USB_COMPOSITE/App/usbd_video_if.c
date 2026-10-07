@@ -212,54 +212,54 @@ static int8_t VIDEO_Itf_Control(uint8_t cmd, uint8_t *pbuf, uint16_t length)
   * @param  pcktidx: pointer to the current packet index in the current image
   * @retval Result of the operation: USBD_OK if all operations are OK else USBD_FAIL
   */
-static int8_t VIDEO_Itf_Data(uint8_t **pbuf, uint16_t *psize, uint16_t *pcktidx)
+static int8_t VIDEO_Itf_Data(uint8_t** pbuf, uint16_t* psize, uint16_t* pcktidx)
 {
-  uint32_t remaining;
-  uint16_t packet_size;
+	uint32_t remaining;
+	uint16_t packet_size;
 
-  if ((pbuf == NULL) || (psize == NULL) || (pcktidx == NULL))
-  {
-    return (-1);
-  }
+	if ((pbuf == NULL) || (psize == NULL) || (pcktidx == NULL))
+	{
+		return (-1);
+	}
 
-  /*
-   * The class driver adds the two-byte UVC payload header. Therefore psize
-   * includes those two bytes, while pbuf points only to JPEG data.
-   */
-  if ((video_frame_size == 0U) && (frame_ready != 0) && (jpeg_size > 0U))
-  {
-    video_frame_size = jpeg_size;
-    video_offset = 0U;
-    frame_ready = 0;
-  }
+	/*
+	 * The class driver adds the two-byte UVC payload header. Therefore psize
+	 * includes those two bytes, while pbuf points only to JPEG data.
+	 */
+	if ((video_frame_size == 0U) && (frame_ready != 0) && (jpeg_size > 0U))
+	{
+		video_frame_size = jpeg_size;
+		video_offset = 0U;
+		frame_ready = 0;
+	}
 
-  if ((video_frame_size == 0U) || (video_offset >= video_frame_size))
-  {
-    *pbuf = NULL;
-    *psize = 0U;
-    *pcktidx = 0U;
-    return (0);
-  }
+	if ((video_frame_size == 0U) || (video_offset >= video_frame_size))
+	{
+		*pbuf = NULL;
+		*psize = 0U;
+		*pcktidx = 0U;
+		return (0);
+	}
 
-  remaining = video_frame_size - video_offset;
-  packet_size = (remaining > UVC_APP_PAYLOAD_SIZE)
-                  ? UVC_PACKET_SIZE
-                  : (uint16_t)(remaining + 2U);
+	remaining = video_frame_size - video_offset;
+	packet_size = (remaining > UVC_APP_PAYLOAD_SIZE)
+		? UVC_PACKET_SIZE
+		: (uint16_t)(remaining + 2U);
 
-  *pbuf = &cameraData[video_offset];
-  *psize = packet_size;
-  *pcktidx = (uint16_t)video_offset;
+	*pbuf = &cameraData[video_offset];
+	*psize = packet_size;
+	*pcktidx = (uint16_t)video_offset;
 
-  video_offset += (uint32_t)packet_size - 2U;
+	video_offset += (uint32_t)packet_size - 2U;
 
-  if (video_offset >= video_frame_size)
-  {
-    video_offset = 0U;
-    video_frame_size = 0U;
-    jpeg_size = 0U;
-    uvc_capture_request = 1U;
-  }
-  return (0);
+	if (video_offset >= video_frame_size)
+	{
+		video_offset = 0U;
+		video_frame_size = 0U;
+		jpeg_size = 0U;
+		uvc_capture_request = 1U;
+	}
+	return (0);
 }
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_IMPLEMENTATION */
