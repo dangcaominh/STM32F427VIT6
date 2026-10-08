@@ -76,7 +76,6 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Drivers/BSP/USB_COMPOSITE/Target
     Drivers/BSP/USB_COMPOSITE/Core/Inc
     Drivers/BSP/USB_COMPOSITE/Class/CDC_ACM/Inc
-    Drivers/BSP/USB_COMPOSITE/Class/DFU/Inc
     Drivers/BSP/USB_COMPOSITE/Class/VIDEO/Inc
     Drivers/BSP/USB_COMPOSITE/Class/COMPOSITE/Inc
     # Core/Src/lvgl

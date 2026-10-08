@@ -103,6 +103,7 @@ USBD_CDC_ACM_LineCodingTypeDef Line_Coding[NUMBER_OF_CDC];
 
 uint32_t Write_Index[NUMBER_OF_CDC]; /* keep track of received data over UART */
 uint32_t Read_Index[NUMBER_OF_CDC];  /* keep track of sent data to USB */
+static volatile uint8_t dfu_requested = 0U;
 
 /* USER CODE END PRIVATE_VARIABLES */
 
@@ -280,6 +281,29 @@ static int8_t CDC_Control(uint8_t cdc_ch, uint8_t cmd, uint8_t* pbuf, uint16_t l
 static int8_t CDC_Receive(uint8_t cdc_ch, uint8_t* Buf, uint32_t* Len)
 {
 	/* USER CODE BEGIN 6 */
+	static uint8_t dfu_match_index = 0U;
+	static const uint8_t dfu_command[] = {'d', 'f', 'u'};
+
+	if (cdc_ch == 0U)
+	{
+		for (uint32_t i = 0U; i < *Len; i++)
+		{
+			if (Buf[i] == dfu_command[dfu_match_index])
+			{
+				dfu_match_index++;
+				if (dfu_match_index == sizeof(dfu_command))
+				{
+					dfu_requested = 1U;
+					dfu_match_index = 0U;
+				}
+			}
+			else
+			{
+				dfu_match_index = (Buf[i] == dfu_command[0]) ? 1U : 0U;
+			}
+		}
+	}
+
 	CDC_Transmit(cdc_ch, Buf, *Len); // echo back on same channel
 
 	USBD_CDC_SetRxBuffer(cdc_ch, &hUsbDevice, &Buf[0]);
@@ -331,6 +355,11 @@ uint8_t CDC_Transmit(uint8_t ch, uint8_t* Buf, uint16_t Len)
 	result = USBD_CDC_TransmitPacket(ch, &hUsbDevice);
 	return result;
 	/* USER CODE END 7 */
+}
+
+uint8_t CDC_DfuRequested(void)
+{
+	return dfu_requested;
 }
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_IMPLEMENTATION */

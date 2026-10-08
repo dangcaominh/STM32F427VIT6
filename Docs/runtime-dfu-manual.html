@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <title>Runtime DFU - STM32F427VIT6</title>
+  <style>
+    @page { size: A4; margin: 18mm 16mm; }
+    body { font-family: "Segoe UI", Arial, sans-serif; color: #202124; line-height: 1.45; font-size: 10.5pt; }
+    h1 { color: #123b63; font-size: 24pt; margin-bottom: 4px; }
+    h2 { color: #155a8a; border-bottom: 1px solid #b7c9d8; padding-bottom: 3px; margin-top: 22px; }
+    h3 { color: #244f70; margin-top: 15px; }
+    .subtitle { color: #5f6368; font-size: 12pt; }
+    .box { background: #eef6fb; border-left: 4px solid #1877b9; padding: 9px 12px; margin: 12px 0; }
+    .warn { background: #fff7e6; border-left-color: #d88900; }
+    code, pre { font-family: Consolas, "Courier New", monospace; }
+    pre { background: #f4f6f8; border: 1px solid #d8dee4; padding: 9px; white-space: pre-wrap; font-size: 9pt; }
+    table { width: 100%; border-collapse: collapse; margin: 8px 0 14px; }
+    th, td { border: 1px solid #c7d0d8; padding: 6px 7px; text-align: left; vertical-align: top; }
+    th { background: #e8f0f6; }
+    .small { font-size: 9pt; color: #5f6368; }
+    .pagebreak { page-break-before: always; }
+    ul { margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Runtime DFU cho STM32F427VIT6</h1>
+  <div class="subtitle">Tóm tắt triển khai và manual sử dụng</div>
+  <p class="small">Ngày: 07/10/2026 &nbsp; | &nbsp; USB OTG_HS controller + internal FS PHY</p>
+
+  <div class="box">
+    <b>Mục tiêu:</b> cập nhật firmware khi application đang chạy qua USB composite,
+    không dùng System Memory bootloader của ST và không cần thay đổi chân BOOT0.
+  </div>
+
+  <h2>1. Những gì đã triển khai</h2>
+  <ul>
+    <li>Bật DFU class trong USB composite hiện có (CDC + UVC + DFU).</li>
+    <li>Thêm <code>runtime_dfu.c/.h</code> để nhận firmware vào vùng staging ở nửa flash trên.</li>
+    <li>Giới hạn erase/write/read chỉ trong vùng staging; không cho DFU ghi đè image đang chạy.</li>
+    <li>Ghi metadata gồm magic, kích thước image, CRC32 và cờ valid.</li>
+    <li>Kiểm tra vector table và CRC32 trước khi chấp nhận image.</li>
+    <li>Sau DFU manifestation, application reset; routine đặt trong <code>.RamFunc</code> copy image staging về vùng application rồi reset lần cuối.</li>
+    <li>Thêm source runtime DFU vào CMake và thêm prototype <code>MX_USB_DEVICE_Init()</code> qua header USB device.</li>
+    <li>Giữ USB ở <code>USB_OTG_HS</code> với <code>USB_OTG_EMBEDDED_PHY</code>, tốc độ Full Speed.</li>
+  </ul>
+
+  <h2>2. Luồng hoạt động</h2>
+  <pre>Application đang chạy
+        |
+        | USB composite DFU DNLOAD
+        v
+Ghi firmware vào staging: 0x08100000
+        |
+        | Erase / Write / Verify
+        v
+DFU manifestation -> ghi metadata pending
+        |
+        v
+Reset application (không vào bootloader ST)
+        |
+        | RuntimeDfu_ApplyPending()
+        v
+Copy staging -> application: 0x08000000
+        |
+        v
+Xóa cờ pending và reset
+        |
+        v
+Chạy firmware mới</pre>
+
+  <h2>3. Layout flash mới</h2>
+  <table>
+    <tr><th>Vùng</th><th>Địa chỉ</th><th>Kích thước</th><th>Mục đích</th></tr>
+    <tr><td>Application</td><td><code>0x08000000</code> - <code>0x080FFFFF</code></td><td>1 MiB</td><td>Image đang chạy; linker đặt application ở đây.</td></tr>
+    <tr><td>DFU staging</td><td><code>0x08100000</code> - <code>0x081DFFFF</code></td><td>896 KiB</td><td>Image mới nhận qua USB.</td></tr>
+    <tr><td>Metadata</td><td><code>0x081E0000</code> - <code>0x081FFFFF</code></td><td>128 KiB</td><td>Magic, size, CRC32, valid flag.</td></tr>
+  </table>
+  <p>Linker hiện dùng:</p>
+  <pre>RAM   (xrw) : ORIGIN = 0x20000000, LENGTH = 192K
+CCMRAM(xrw) : ORIGIN = 0x10000000, LENGTH = 64K
+FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 1024K</pre>
+  <div class="box warn">
+    Firmware application không được vượt quá 1 MiB. File firmware dùng để nạp qua DFU
+    phải tương ứng với image bắt đầu tại <code>0x08000000</code>.
+  </div>
+
+  <h2>4. Các file quan trọng</h2>
+  <table>
+    <tr><th>File</th><th>Vai trò</th></tr>
+    <tr><td><code>Drivers/BSP/USB_COMPOSITE/App/runtime_dfu.c</code></td><td>Erase, write, read, CRC32, metadata và copy image.</td></tr>
+    <tr><td><code>Drivers/BSP/USB_COMPOSITE/App/runtime_dfu.h</code></td><td>Địa chỉ và API runtime DFU.</td></tr>
+    <tr><td><code>Drivers/BSP/USB_COMPOSITE/App/usbd_dfu_if.c</code></td><td>Adapter giữa ST DFU class và runtime DFU.</td></tr>
+    <tr><td><code>Drivers/BSP/USB_COMPOSITE/Class/DFU/Src/usbd_dfu.c</code></td><td>Commit media khi manifestation kết thúc.</td></tr>
+    <tr><td><code>Drivers/BSP/USB_COMPOSITE/AL94.I-CUBE-USBD-COMPOSITE_conf.h</code></td><td>Bật <code>_USBD_USE_DFU</code>.</td></tr>
+    <tr><td><code>STM32F427xx_FLASH.ld</code></td><td>Giới hạn vùng link application còn 1 MiB.</td></tr>
+    <tr><td><code>Core/Src/main.c</code></td><td>Gọi <code>RuntimeDfu_ApplyPending()</code> ngay sau <code>HAL_Init()</code>.</td></tr>
+  </table>
+
+  <div class="pagebreak"></div>
+  <h2>5. Manual build và nạp firmware</h2>
+  <h3>Build</h3>
+  <p>Build project bằng CMake/STM32CubeIDE như bình thường. Build đã được kiểm tra thành công:</p>
+  <pre>FLASH: 140780 B / 1 MB
+RAM:    92328 B / 192 KB
+Result: success</pre>
+
+  <h3>Nạp firmware lần đầu</h3>
+  <p>Vì runtime DFU cần có mặt trong image hiện tại, lần đầu hãy nạp image bằng ST-Link/debugger:</p>
+  <ol>
+    <li>Build application.</li>
+    <li>Nạp file ELF/HEX/BIN vào địa chỉ <code>0x08000000</code>.</li>
+    <li>Reset MCU, kết nối USB vào chân <code>PB14 = DM</code>, <code>PB15 = DP</code>.</li>
+    <li>Kiểm tra thiết bị composite đã enumerate với CDC, UVC và DFU.</li>
+  </ol>
+
+  <h3>Update qua runtime DFU</h3>
+  <ol>
+    <li>Giữ nguồn MCU và giữ kết nối USB.</li>
+    <li>Dùng host DFU gửi firmware mới qua interface DFU của thiết bị composite.</li>
+    <li>Firmware sẽ được ghi vào <code>0x08100000</code>, không ghi trực tiếp vào vùng đang chạy.</li>
+    <li>Khi host kết thúc manifestation, thiết bị sẽ reset. Đây là reset về application, không phải nhảy vào bootloader ST.</li>
+    <li>Trong lần khởi động tiếp theo, firmware được verify CRC rồi copy về <code>0x08000000</code>.</li>
+    <li>Thiết bị reset lần nữa và chạy image mới.</li>
+  </ol>
+
+  <h3>Ví dụ với dfu-util</h3>
+  <pre>dfu-util -l
+dfu-util -d &lt;VID&gt;:&lt;PID&gt; -a 0 -D build\Debug\STM32F427VIT6.bin</pre>
+  <p class="small">VID/PID và alternate setting phải lấy từ descriptor thực tế của firmware bằng
+  <code>dfu-util -l</code>. Nếu host yêu cầu địa chỉ, dùng vùng staging theo descriptor,
+  không dùng địa chỉ vùng application đang chạy.</p>
+
+  <h2>6. Điều kiện và giới hạn</h2>
+  <ul>
+    <li>Image tối đa: 896 KiB theo vùng staging được định nghĩa hiện tại.</li>
+    <li>Application tối đa: 1 MiB.</li>
+    <li>Không ngắt nguồn trong lúc đang copy staging về application.</li>
+    <li>Routine copy được đặt trong RAM để không execute từ flash đang program.</li>
+    <li>CRC32 hiện bảo vệ lỗi truyền/ghi; chưa phải chữ ký số chống firmware giả mạo.</li>
+    <li>Không được dùng vùng <code>0x081E0000</code> cho dữ liệu khác vì đây là metadata.</li>
+    <li>USB internal PHY chỉ chạy Full Speed; muốn High Speed 480 Mbps cần ULPI PHY ngoài.</li>
+  </ul>
+
+  <h2>7. Kiểm tra sau khi update</h2>
+  <ol>
+    <li>Thiết bị vẫn enumerate USB sau reset.</li>
+    <li>CDC mở được và phản hồi.</li>
+    <li>UVC tiếp tục stream camera.</li>
+    <li>Firmware version/marker trong image mới đúng.</li>
+    <li>Không có lặp reset liên tục nếu CRC hoặc vector table không hợp lệ.</li>
+  </ol>
+
+  <div class="box">
+    <b>Kết quả:</b> Runtime DFU đã được tích hợp vào workspace, build pass, không đổi BOOT0,
+    không sử dụng bootloader ST và có staging/metadata layout rõ ràng trong flash.
+  </div>
+</body>
+</html>

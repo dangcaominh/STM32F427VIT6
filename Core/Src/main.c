@@ -170,11 +170,14 @@ int _write(int file, char* data, int len)
   return len;
 }
 
+#define DFU_MAGIC_CODE     0x44465531U
+
+static void RequestDfuBootloader(void) __attribute__((noreturn));
+
 void Camera_Init_OV5640();
 void Camera_Init_OV2640();
 void LCD_Init();
 int32_t tcp_sent_count = 0;
-extern bool initDone;
 
 /* USER CODE END 0 */
 
@@ -186,7 +189,6 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -217,6 +219,7 @@ int main(void)
   MX_LWIP_Init();
   MX_USB_OTG_HS_PCD_Init();
   /* USER CODE BEGIN 2 */
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 1);
   MX_USB_DEVICE_Init();
   LCD_Init();
   Camera_Init_OV5640();
@@ -231,6 +234,11 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 	while (1)
   {
+    if (CDC_DfuRequested() != 0U)
+    {
+      RequestDfuBootloader();
+    }
+
     /*
      * Keep the DMA buffer untouched while USB is transmitting it.
      * VIDEO_Itf_Data() raises this request after the last packet.
@@ -302,6 +310,19 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+static void RequestDfuBootloader(void)
+{
+  __HAL_RCC_PWR_CLK_ENABLE();
+  SET_BIT(PWR->CR, PWR_CR_DBP);
+  RTC->BKP0R = DFU_MAGIC_CODE;
+  __DSB();
+  NVIC_SystemReset();
+
+  for (;;)
+  {
+  }
+}
 
 /* USER CODE END 4 */
 

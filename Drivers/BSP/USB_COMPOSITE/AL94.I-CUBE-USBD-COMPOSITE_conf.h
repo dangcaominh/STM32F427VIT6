@@ -31,49 +31,49 @@
 	MiddleWare version :
 */
 /*---------- _USBD_USE_HS  -----------*/
-#define _USBD_USE_HS      true
+#define _USBD_USE_HS      1
 
 /*---------- _USBD_USE_CDC_ACM  -----------*/
-#define _USBD_USE_CDC_ACM      true
+#define _USBD_USE_CDC_ACM      1
 
 /*---------- _USBD_CDC_ACM_COUNT  -----------*/
 #define _USBD_CDC_ACM_COUNT      1
 
 /*---------- _USBD_USE_CDC_RNDIS  -----------*/
-#define _USBD_USE_CDC_RNDIS      false
+#define _USBD_USE_CDC_RNDIS      0
 
 /*---------- _USBD_USE_CDC_ECM  -----------*/
-#define _USBD_USE_CDC_ECM      false
+#define _USBD_USE_CDC_ECM      0
 
 /*---------- _USBD_USE_HID_MOUSE  -----------*/
-#define _USBD_USE_HID_MOUSE      false
+#define _USBD_USE_HID_MOUSE      0
 
 /*---------- _USBD_USE_HID_KEYBOARD  -----------*/
-#define _USBD_USE_HID_KEYBOARD      false
+#define _USBD_USE_HID_KEYBOARD      0
 
 /*---------- _USBD_USE_HID_CUSTOM  -----------*/
-#define _USBD_USE_HID_CUSTOM      false
+#define _USBD_USE_HID_CUSTOM      0
 
 /*---------- _USBD_USE_UAC_MIC  -----------*/
-#define _USBD_USE_UAC_MIC      false
+#define _USBD_USE_UAC_MIC      0
 
 /*---------- _USBD_USE_UAC_SPKR  -----------*/
-#define _USBD_USE_UAC_SPKR      false
+#define _USBD_USE_UAC_SPKR      0
 
 /*---------- _USBD_USE_UVC  -----------*/
-#define _USBD_USE_UVC      true
+#define _USBD_USE_UVC      1
 
 /*---------- _USBD_USE_MSC  -----------*/
-#define _USBD_USE_MSC      false
+#define _USBD_USE_MSC      0
 
 /*---------- _USBD_USE_DFU  -----------*/
-#define _USBD_USE_DFU      false
+#define _USBD_USE_DFU      0
 
 /*---------- _USBD_USE_PRNTR  -----------*/
-#define _USBD_USE_PRNTR      false
+#define _USBD_USE_PRNTR      0
 
 /*---------- _STM32F1_DEVICE  -----------*/
-#define _STM32F1_DEVICE      false
+#define _STM32F1_DEVICE      0
 
 #ifdef __cplusplus
 }
